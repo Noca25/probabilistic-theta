@@ -21,7 +21,10 @@ include(
 
         "xsts/xsts",
         "xsts/xsts-analysis",
-        "xsts/xsts-cli"
+        "xsts/xsts-cli",
+
+        "probabilistic/prob-core",
+        "probabilistic/prob-analysis"
 )
 
 for (project in rootProject.children) {

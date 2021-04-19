@@ -16,6 +16,7 @@
 package hu.bme.mit.theta.sts.cli;
 
 import java.io.*;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -143,8 +144,8 @@ public class StsCli {
 		try {
 			final Stopwatch sw = Stopwatch.createStarted();
 			final STS sts = loadModel();
-			final StsConfig<?, ?, ?> configuration = buildConfiguration(sts);
-			final SafetyResult<?, ?> status = check(configuration);
+			final StsConfig<?, ?, ?, ?, ?> configuration = buildConfiguration(sts);
+			final SafetyResult<?, ?, ?, ?> status = check(configuration);
 			sw.stop();
 			printResult(status, sts, sw.elapsed(TimeUnit.MILLISECONDS));
 			if (status.isUnsafe() && cexfile != null) {
@@ -156,7 +157,7 @@ public class StsCli {
 		}
 	}
 
-	private SafetyResult<?, ?> check(StsConfig<?, ?, ?> configuration) throws Exception {
+	private SafetyResult<?, ?, ?, ?> check(StsConfig<?, ?, ?, ?, ?> configuration) throws Exception {
 		try {
 			return configuration.check();
 		} catch (final Exception ex) {
@@ -191,7 +192,7 @@ public class StsCli {
 		}
 	}
 
-	private StsConfig<?, ?, ?> buildConfiguration(final STS sts) throws Exception {
+	private StsConfig<?, ?, ?, ?, ?> buildConfiguration(final STS sts) throws Exception {
 		try {
 			return new StsConfigBuilder(domain, refinement, Z3SolverFactory.getInstance())
 					.initPrec(initPrec).search(search)
@@ -201,7 +202,7 @@ public class StsCli {
 		}
 	}
 
-	private void printResult(final SafetyResult<?, ?> status, final STS sts, final long totalTimeMs) {
+	private void printResult(final SafetyResult<?, ?, ?, ?> status, final STS sts, final long totalTimeMs) {
 		final CegarStatistics stats = (CegarStatistics) status.getStats().get();
 		if (benchmarkMode) {
 			writer.cell(status.isSafe());
@@ -210,9 +211,11 @@ public class StsCli {
 			writer.cell(stats.getAbstractorTimeMs());
 			writer.cell(stats.getRefinerTimeMs());
 			writer.cell(stats.getIterations());
-			writer.cell(status.getArg().size());
-			writer.cell(status.getArg().getDepth());
-			writer.cell(status.getArg().getMeanBranchingFactor());
+
+			for (Map.Entry<String, Long> entry : status.getAbstraction().getMetrics().entrySet()) {
+				writer.cell(entry.getValue());
+			}
+
 			if (status.isUnsafe()) {
 				writer.cell(status.asUnsafe().getTrace().length() + "");
 			} else {
@@ -241,7 +244,7 @@ public class StsCli {
 		}
 	}
 
-	private void writeCex(final STS sts, final SafetyResult.Unsafe<?, ?> status) throws FileNotFoundException {
+	private void writeCex(final STS sts, final SafetyResult.Unsafe<?, ?, ?, ?> status) throws FileNotFoundException {
 		@SuppressWarnings("unchecked") final Trace<ExprState, StsAction> trace = (Trace<ExprState, StsAction>) status.getTrace();
 		final Trace<Valuation, StsAction> concrTrace = StsTraceConcretizer.concretize(sts, trace, Z3SolverFactory.getInstance());
 		final File file = new File(cexfile);

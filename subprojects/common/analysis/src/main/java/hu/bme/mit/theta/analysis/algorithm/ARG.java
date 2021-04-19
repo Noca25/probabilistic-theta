@@ -20,10 +20,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.stream.Collectors.toList;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.*;
 import java.util.stream.Stream;
 
 import hu.bme.mit.theta.analysis.Action;
@@ -34,7 +31,7 @@ import hu.bme.mit.theta.analysis.State;
  * Represents an abstract reachability graph (ARG). See the related class
  * ArgBuilder.
  */
-public final class ARG<S extends State, A extends Action> {
+public final class ARG<S extends State, A extends Action> implements Abstraction<S, A> {
 
 	private final Collection<ArgNode<S, A>> initNodes;
 	boolean initialized; // Set by ArgBuilder
@@ -209,4 +206,17 @@ public final class ARG<S extends State, A extends Action> {
 		return mean;
 	}
 
+	@Override
+	public Map<String, Long> getMetrics() {
+		LinkedHashMap<String, Long> metrics = new LinkedHashMap<>();
+		metrics.put("ArgSize", size());
+		metrics.put("ArgDepth", (long) getDepth());
+		metrics.put("ArgMeanBranchFactor", (long) getMeanBranchingFactor());
+		return metrics;
+	}
+
+	@Override
+	public Collection<String> getMetricNames() {
+		return List.of("ArgSize", "ArgDepth", "ArgMeanBranchFactor");
+	}
 }

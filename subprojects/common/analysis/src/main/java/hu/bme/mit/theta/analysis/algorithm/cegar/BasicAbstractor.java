@@ -41,7 +41,7 @@ import hu.bme.mit.theta.common.logging.Logger.Level;
 /**
  * Basic implementation for the abstractor, relying on an ArgBuilder.
  */
-public final class BasicAbstractor<S extends State, A extends Action, P extends Prec> implements Abstractor<S, A, P> {
+public final class BasicAbstractor<S extends State, A extends Action, P extends Prec> implements Abstractor<S, A, ARG<S,A>, P> {
 
 	private final ArgBuilder<S, A, P> argBuilder;
 	private final Function<? super S, ?> projection;
@@ -64,7 +64,7 @@ public final class BasicAbstractor<S extends State, A extends Action, P extends 
 	}
 
 	@Override
-	public ARG<S, A> createArg() {
+	public ARG<S, A> createAbstraction() {
 		return argBuilder.createArg();
 	}
 

@@ -34,7 +34,8 @@ import hu.bme.mit.theta.common.visualization.Graph;
 import hu.bme.mit.theta.common.visualization.LineStyle;
 import hu.bme.mit.theta.common.visualization.NodeAttributes;
 
-public final class ArgVisualizer<S extends State, A extends Action> {
+public final class ArgVisualizer<S extends State, A extends Action>
+	implements Visualizer<ARG<? extends S, ? extends A>>{
 
 	private static final LineStyle COVER_EDGE_STYLE = LineStyle.DASHED;
 	private static final LineStyle SUCC_EDGE_STYLE = LineStyle.NORMAL;

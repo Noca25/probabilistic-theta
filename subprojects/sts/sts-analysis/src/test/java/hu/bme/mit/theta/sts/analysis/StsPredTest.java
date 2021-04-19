@@ -97,7 +97,7 @@ public class StsPredTest {
 
 		final ArgBuilder<PredState, StsAction, PredPrec> argBuilder = ArgBuilder.create(lts, analysis, target);
 
-		final Abstractor<PredState, StsAction, PredPrec> abstractor = BasicAbstractor.builder(argBuilder).logger(logger)
+		final var abstractor = BasicAbstractor.builder(argBuilder).logger(logger)
 				.build();
 
 		final ExprTraceChecker<ItpRefutation> exprTraceChecker = ExprTraceFwBinItpChecker.create(sts.getInit(),
@@ -107,12 +107,12 @@ public class StsPredTest {
 				.create(exprTraceChecker, JoiningPrecRefiner.create(new ItpRefToPredPrec(ExprSplitters.atoms())),
 						PruneStrategy.LAZY, logger);
 
-		final SafetyChecker<PredState, StsAction, PredPrec> checker = CegarChecker.create(abstractor, refiner, logger);
+		final var checker = CegarChecker.create(abstractor, refiner, logger);
 
-		final SafetyResult<PredState, StsAction> safetyStatus = checker.check(prec);
+		final var safetyStatus = checker.check(prec);
 		System.out.println(safetyStatus);
 
-		final ARG<PredState, StsAction> arg = safetyStatus.getArg();
+		final ARG<PredState, StsAction> arg = safetyStatus.getAbstraction();
 		assertTrue(isWellLabeled(arg, solver));
 
 		// System.out.println(new

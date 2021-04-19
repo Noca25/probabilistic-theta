@@ -77,10 +77,10 @@ public final class XtaAnalysisTest {
 		final ArgBuilder<XtaState<UnitState>, XtaAction, UnitPrec> argBuilder = ArgBuilder.create(lts, analysis,
 				s -> false);
 
-		final Abstractor<XtaState<UnitState>, XtaAction, UnitPrec> abstractor = BasicAbstractor.builder(argBuilder)
+		final var abstractor = BasicAbstractor.builder(argBuilder)
 				.projection(s -> s.getLocs()).build();
 
-		final ARG<XtaState<UnitState>, XtaAction> arg = abstractor.createArg();
+		final ARG<XtaState<UnitState>, XtaAction> arg = abstractor.createAbstraction();
 		abstractor.check(arg, UnitPrec.getInstance());
 
 		System.out.println(GraphvizWriter.getInstance().writeString(ArgVisualizer.getDefault().visualize(arg)));

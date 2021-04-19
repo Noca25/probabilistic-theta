@@ -21,12 +21,15 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 
-import hu.bme.mit.theta.analysis.algorithm.SafetyChecker;
-import hu.bme.mit.theta.analysis.algorithm.SafetyResult;
-import hu.bme.mit.theta.analysis.algorithm.SearchStrategy;
+import hu.bme.mit.theta.analysis.Action;
+import hu.bme.mit.theta.analysis.Counterexample;
+import hu.bme.mit.theta.analysis.State;
+import hu.bme.mit.theta.analysis.Trace;
+import hu.bme.mit.theta.analysis.algorithm.*;
 import hu.bme.mit.theta.analysis.unit.UnitPrec;
 import hu.bme.mit.theta.analysis.utils.ArgVisualizer;
 import hu.bme.mit.theta.analysis.utils.TraceVisualizer;
+import hu.bme.mit.theta.analysis.utils.Visualizer;
 import hu.bme.mit.theta.common.CliUtils;
 import hu.bme.mit.theta.common.logging.Logger;
 import hu.bme.mit.theta.common.table.BasicTableWriter;
@@ -34,6 +37,8 @@ import hu.bme.mit.theta.common.table.TableWriter;
 import hu.bme.mit.theta.common.visualization.Graph;
 import hu.bme.mit.theta.common.visualization.writer.GraphvizWriter;
 import hu.bme.mit.theta.xta.XtaSystem;
+import hu.bme.mit.theta.xta.analysis.XtaAction;
+import hu.bme.mit.theta.xta.analysis.XtaState;
 import hu.bme.mit.theta.xta.analysis.lazy.ClockStrategy;
 import hu.bme.mit.theta.xta.analysis.lazy.DataStrategy;
 import hu.bme.mit.theta.xta.analysis.lazy.LazyXtaCheckerFactory;
@@ -104,12 +109,15 @@ public final class XtaCli {
 
 		try {
 			final XtaSystem system = loadModel();
-			final SafetyChecker<?, ?, UnitPrec> checker = LazyXtaCheckerFactory.create(system, dataStrategy,
+			final var checker =
+					LazyXtaCheckerFactory.create(system, dataStrategy,
 					clockStrategy, searchStrategy);
-			final SafetyResult<?, ?> result = check(checker);
+			final SafetyResult<? extends State, ? extends Action, ? extends ARG<? extends State, ? extends Action>,
+					? extends Trace<? extends State, ? extends Action>>
+					result = check(checker);
 			printResult(result);
 			if (dotfile != null) {
-				writeVisualStatus(result, dotfile);
+				writeVisualStatus(result, dotfile, ArgVisualizer.getDefault(), TraceVisualizer.getDefault());
 			}
 		} catch (final Throwable ex) {
 			printError(ex);
@@ -117,7 +125,8 @@ public final class XtaCli {
 		}
 	}
 
-	private SafetyResult<?, ?> check(SafetyChecker<?, ?, UnitPrec> checker) throws Exception {
+	private <S extends State, A extends Action, AA extends Abstraction<? extends S, ? extends A>, C extends Counterexample<? extends S, ? extends A>>
+	SafetyResult<? extends S, ? extends A, AA, C> check(SafetyChecker<? extends S, ? extends A, UnitPrec, AA, C> checker) throws Exception {
 		try {
 			return checker.check(UnitPrec.getInstance());
 		} catch (final Exception ex) {
@@ -136,7 +145,7 @@ public final class XtaCli {
 		}
 	}
 
-	private void printResult(final SafetyResult<?, ?> result) {
+	private void printResult(final SafetyResult<?, ?, ?, ?> result) {
 		final LazyXtaStatistics stats = (LazyXtaStatistics) result.getStats().get();
 		if (benchmarkMode) {
 			stats.writeData(writer);
@@ -163,10 +172,16 @@ public final class XtaCli {
 		}
 	}
 
-	private void writeVisualStatus(final SafetyResult<?, ?> status, final String filename)
+	private <S extends State, A extends Action,
+			AA extends Abstraction<? extends S, ? extends A>,
+			C extends Counterexample<? extends S, ? extends A>>
+	void writeVisualStatus(
+			final SafetyResult<? extends S, ? extends A, ? extends AA, ? extends C> status, final String filename,
+			Visualizer<AA> abstractionVisualizer, Visualizer<C> cexVisualizer
+	)
 			throws FileNotFoundException {
-		final Graph graph = status.isSafe() ? ArgVisualizer.getDefault().visualize(status.asSafe().getArg())
-				: TraceVisualizer.getDefault().visualize(status.asUnsafe().getTrace());
+		final Graph graph = status.isSafe() ? abstractionVisualizer.visualize(status.asSafe().getAbstraction())
+				: cexVisualizer.visualize(status.asUnsafe().getTrace());
 		GraphvizWriter.getInstance().writeFile(graph, filename);
 	}
 

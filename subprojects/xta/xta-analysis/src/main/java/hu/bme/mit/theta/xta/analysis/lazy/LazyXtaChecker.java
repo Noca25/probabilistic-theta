@@ -23,6 +23,7 @@ import java.util.Collection;
 import com.google.common.collect.Lists;
 
 import hu.bme.mit.theta.analysis.State;
+import hu.bme.mit.theta.analysis.Trace;
 import hu.bme.mit.theta.analysis.algorithm.ARG;
 import hu.bme.mit.theta.analysis.algorithm.ArgNode;
 import hu.bme.mit.theta.analysis.algorithm.SafetyChecker;
@@ -36,7 +37,9 @@ import hu.bme.mit.theta.xta.analysis.XtaAction;
 import hu.bme.mit.theta.xta.analysis.XtaLts;
 import hu.bme.mit.theta.xta.analysis.XtaState;
 
-final class LazyXtaChecker<S extends State> implements SafetyChecker<XtaState<S>, XtaAction, UnitPrec> {
+final class LazyXtaChecker<S extends State>
+		implements SafetyChecker<XtaState<S>, XtaAction, UnitPrec,
+		ARG<XtaState<S>, XtaAction>, Trace<XtaState<S>, XtaAction>> {
 	private final XtaLts lts;
 	private final AlgorithmStrategy<XtaState<S>, XtaState<S>> algorithmStrategy;
 	private final SearchStrategy searchStrategy;
@@ -55,7 +58,7 @@ final class LazyXtaChecker<S extends State> implements SafetyChecker<XtaState<S>
 	}
 
 	@Override
-	public SafetyResult<XtaState<S>, XtaAction> check(final UnitPrec prec) {
+	public SafetyResult<XtaState<S>, XtaAction, ARG<XtaState<S>, XtaAction>, Trace<XtaState<S>, XtaAction>> check(final UnitPrec prec) {
 		return new CheckMethod().run();
 	}
 
@@ -72,7 +75,7 @@ final class LazyXtaChecker<S extends State> implements SafetyChecker<XtaState<S>
 			waiting = searchStrategy.createWaitlist();
 		}
 
-		public SafetyResult<XtaState<S>, XtaAction> run() {
+		public SafetyResult<XtaState<S>, XtaAction, ARG<XtaState<S>, XtaAction>, Trace<XtaState<S>, XtaAction>> run() {
 			stats.startAlgorithm();
 
 			init();
@@ -89,7 +92,9 @@ final class LazyXtaChecker<S extends State> implements SafetyChecker<XtaState<S>
 
 			stats.stopAlgorithm();
 			final LazyXtaStatistics statistics = stats.build();
-			final SafetyResult<XtaState<S>, XtaAction> result = SafetyResult.safe(arg, statistics);
+			final SafetyResult<XtaState<S>, XtaAction,
+					ARG<XtaState<S>, XtaAction>, Trace<XtaState<S>,
+					XtaAction>> result = SafetyResult.safe(arg, statistics);
 			return result;
 		}
 

@@ -90,10 +90,10 @@ public final class XtaZoneAnalysisTest {
 		final ArgBuilder<XtaState<Prod2State<ExplState, ZoneState>>, XtaAction, ZonePrec> argBuilder = ArgBuilder
 				.create(lts, analysis, s -> false);
 
-		final Abstractor<XtaState<Prod2State<ExplState, ZoneState>>, XtaAction, ZonePrec> abstractor = BasicAbstractor
+		final var abstractor = BasicAbstractor
 				.builder(argBuilder).projection(s -> s.getLocs()).build();
 
-		final ARG<XtaState<Prod2State<ExplState, ZoneState>>, XtaAction> arg = abstractor.createArg();
+		final ARG<XtaState<Prod2State<ExplState, ZoneState>>, XtaAction> arg = abstractor.createAbstraction();
 		abstractor.check(arg, prec);
 
 		System.out.println(arg.getNodes().collect(Collectors.toSet()));

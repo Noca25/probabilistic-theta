@@ -21,6 +21,7 @@ import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -30,6 +31,7 @@ import com.beust.jcommander.ParameterException;
 import com.google.common.base.Stopwatch;
 
 import hu.bme.mit.theta.analysis.Trace;
+import hu.bme.mit.theta.analysis.algorithm.ARG;
 import hu.bme.mit.theta.analysis.algorithm.SafetyResult;
 import hu.bme.mit.theta.analysis.algorithm.SafetyResult.Unsafe;
 import hu.bme.mit.theta.analysis.algorithm.cegar.CegarStatistics;
@@ -191,8 +193,8 @@ public class CfaCli {
 			}
 
 			checkNotNull(errLoc, "Error location must be specified in CFA or as argument");
-			final CfaConfig<?, ?, ?> configuration = buildConfiguration(cfa, errLoc);
-			final SafetyResult<?, ?> status = check(configuration);
+			final CfaConfig<?, ?, ?, ?, ?> configuration = buildConfiguration(cfa, errLoc);
+			final SafetyResult<?, ?, ?, ?> status = check(configuration);
 			sw.stop();
 			printResult(status, sw.elapsed(TimeUnit.MILLISECONDS));
 			if (status.isUnsafe() && cexfile != null) {
@@ -205,6 +207,8 @@ public class CfaCli {
 	}
 
 	private void printHeader() {
+		//TODO: this is ARG-specific. To handle other abstractions, the CLI should not print the header without knowing
+		// the abstraction used.
 		Stream.of("Result", "TimeMs", "AlgoTimeMs", "AbsTimeMs", "RefTimeMs", "Iterations",
 				"ArgSize", "ArgDepth", "ArgMeanBranchFactor", "CexLen").forEach(writer::cell);
 		writer.newRow();
@@ -220,7 +224,7 @@ public class CfaCli {
 		}
 	}
 
-	private CfaConfig<?, ?, ?> buildConfiguration(final CFA cfa, final CFA.Loc errLoc) throws Exception {
+	private CfaConfig<?, ?, ?, ?, ?> buildConfiguration(final CFA cfa, final CFA.Loc errLoc) throws Exception {
 		try {
 			return new CfaConfigBuilder(domain, refinement, Z3SolverFactory.getInstance())
 					.precGranularity(precGranularity).search(search)
@@ -231,7 +235,7 @@ public class CfaCli {
 		}
 	}
 
-	private SafetyResult<?, ?> check(CfaConfig<?, ?, ?> configuration) throws Exception {
+	private SafetyResult<?, ?, ?, ?> check(CfaConfig<?, ?, ?, ?, ?> configuration) throws Exception {
 		try {
 			return configuration.check();
 		} catch (final Exception ex) {
@@ -240,7 +244,7 @@ public class CfaCli {
 		}
 	}
 
-	private void printResult(final SafetyResult<?, ?> status, final long totalTimeMs) {
+	private void printResult(final SafetyResult<?, ?, ?, ?> status, final long totalTimeMs) {
 		final CegarStatistics stats = (CegarStatistics) status.getStats().get();
 		if (benchmarkMode) {
 			writer.cell(status.isSafe());
@@ -249,9 +253,9 @@ public class CfaCli {
 			writer.cell(stats.getAbstractorTimeMs());
 			writer.cell(stats.getRefinerTimeMs());
 			writer.cell(stats.getIterations());
-			writer.cell(status.getArg().size());
-			writer.cell(status.getArg().getDepth());
-			writer.cell(status.getArg().getMeanBranchingFactor());
+			for (Map.Entry<String, Long> metric : status.getAbstraction().getMetrics().entrySet()) {
+				writer.cell(metric.getValue());
+			}
 			if (status.isUnsafe()) {
 				writer.cell(status.asUnsafe().getTrace().length() + "");
 			} else {
@@ -278,7 +282,7 @@ public class CfaCli {
 		}
 	}
 
-	private void writeCex(final Unsafe<?, ?> status) throws FileNotFoundException {
+	private void writeCex(final Unsafe<?, ?, ?, ?> status) throws FileNotFoundException {
 		@SuppressWarnings("unchecked") final Trace<CfaState<?>, CfaAction> trace = (Trace<CfaState<?>, CfaAction>) status.getTrace();
 		final Trace<CfaState<ExplState>, CfaAction> concrTrace = CfaTraceConcretizer.concretize(trace, Z3SolverFactory.getInstance());
 		final File file = new File(cexfile);

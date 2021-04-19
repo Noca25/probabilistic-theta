@@ -34,7 +34,7 @@ import hu.bme.mit.theta.analysis.reachedset.ReachedSet;
 import hu.bme.mit.theta.analysis.waitlist.FifoWaitlist;
 import hu.bme.mit.theta.analysis.waitlist.Waitlist;
 
-public final class ImpactChecker<S extends State, A extends Action, P extends Prec> implements SafetyChecker<S, A, P> {
+public final class ImpactChecker<S extends State, A extends Action, P extends Prec> implements SafetyChecker<S, A, P, ARG<S,A>, Trace<S, A>> {
 
 	private final ArgBuilder<S, A, P> argBuilder;
 	private final ImpactRefiner<S, A> refiner;
@@ -56,7 +56,7 @@ public final class ImpactChecker<S extends State, A extends Action, P extends Pr
 	////
 
 	@Override
-	public SafetyResult<S, A> check(final P prec) {
+	public SafetyResult<S, A, ARG<S,A>, Trace<S, A>> check(final P prec) {
 		return new CheckMethod(prec).run();
 	}
 
@@ -74,7 +74,7 @@ public final class ImpactChecker<S extends State, A extends Action, P extends Pr
 			reachedSet = ImpactReachedSet.create(partitioning);
 		}
 
-		private SafetyResult<S, A> run() {
+		private SafetyResult<S, A, ARG<S,A>, Trace<S, A>> run() {
 			final Optional<ArgNode<S, A>> unsafeNode = unwind();
 
 			if (unsafeNode.isPresent()) {

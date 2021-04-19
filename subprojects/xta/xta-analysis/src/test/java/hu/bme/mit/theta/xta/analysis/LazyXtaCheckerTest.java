@@ -17,6 +17,8 @@ package hu.bme.mit.theta.xta.analysis;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import hu.bme.mit.theta.analysis.Trace;
+import hu.bme.mit.theta.analysis.algorithm.ARG;
 import hu.bme.mit.theta.analysis.algorithm.ArgChecker;
 import hu.bme.mit.theta.analysis.algorithm.SafetyChecker;
 import hu.bme.mit.theta.analysis.algorithm.SafetyResult;
@@ -67,7 +69,10 @@ public final class LazyXtaCheckerTest {
 	@Parameter(2)
 	public ClockStrategy clockStrategy;
 
-	private SafetyChecker<? extends XtaState<?>, XtaAction, UnitPrec> checker;
+	private SafetyChecker<
+			? extends XtaState<?>, XtaAction, UnitPrec,
+			? extends ARG<? extends XtaState<?>, XtaAction>,
+			? extends Trace<? extends XtaState<?>, XtaAction>> checker;
 
 	@Parameters(name = "model: {0}, discrete: {1}, clock: {2}")
 	public static Collection<Object[]> data() {
@@ -94,11 +99,11 @@ public final class LazyXtaCheckerTest {
 	@Test
 	public void test() {
 		// Act
-		final SafetyResult<? extends XtaState<?>, XtaAction> status = checker.check(UnitPrec.getInstance());
+		final var status = checker.check(UnitPrec.getInstance());
 
 		// Assert
 		final ArgChecker argChecker = ArgChecker.create(Z3SolverFactory.getInstance().createSolver());
-		final boolean argCheckResult = argChecker.isWellLabeled(status.getArg());
+		final boolean argCheckResult = argChecker.isWellLabeled(status.getAbstraction());
 		assertTrue(argCheckResult);
 	}
 

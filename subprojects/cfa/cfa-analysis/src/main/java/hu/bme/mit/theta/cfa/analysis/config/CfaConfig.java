@@ -15,27 +15,35 @@
  */
 package hu.bme.mit.theta.cfa.analysis.config;
 
-import hu.bme.mit.theta.analysis.Action;
-import hu.bme.mit.theta.analysis.Prec;
-import hu.bme.mit.theta.analysis.State;
+import hu.bme.mit.theta.analysis.*;
+import hu.bme.mit.theta.analysis.algorithm.ARG;
+import hu.bme.mit.theta.analysis.algorithm.Abstraction;
 import hu.bme.mit.theta.analysis.algorithm.SafetyChecker;
 import hu.bme.mit.theta.analysis.algorithm.SafetyResult;
 
-public final class CfaConfig<S extends State, A extends Action, P extends Prec> {
-	private final SafetyChecker<S, A, P> checker;
+public final class CfaConfig<
+		S extends State,
+		A extends Action,
+		P extends Prec,
+		AA extends Abstraction<S, A>,
+		C extends Counterexample<S,A>> {
+	private final SafetyChecker<S, A, P, ARG<S,A>, Trace<S, A>> checker;
 	private final P initPrec;
 
-	private CfaConfig(final SafetyChecker<S, A, P> checker, final P initPrec) {
+	private CfaConfig(final SafetyChecker<S, A, P, ARG<S,A>, Trace<S, A>> checker, final P initPrec) {
 		this.checker = checker;
 		this.initPrec = initPrec;
 	}
 
-	public static <S extends State, A extends Action, P extends Prec> CfaConfig<S, A, P> create(
-			final SafetyChecker<S, A, P> checker, final P initPrec) {
+	public static <
+			S extends State, A extends Action, P extends Prec,
+			AA extends Abstraction<S, A>,
+			C extends Counterexample<S,A>> CfaConfig<S, A, P, AA, C> create(
+			final SafetyChecker<S, A, P, ARG<S,A>, Trace<S, A>> checker, final P initPrec) {
 		return new CfaConfig<>(checker, initPrec);
 	}
 
-	public SafetyResult<S, A> check() {
+	public SafetyResult<S, A, ARG<S,A>, Trace<S, A>> check() {
 		return checker.check(initPrec);
 	}
 

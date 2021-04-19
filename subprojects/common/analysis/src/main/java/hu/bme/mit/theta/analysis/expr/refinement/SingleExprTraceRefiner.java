@@ -35,7 +35,7 @@ import hu.bme.mit.theta.common.logging.Logger.Level;
  * ExprActions) using an ExprTraceChecker and a PrecRefiner.
  */
 public final class SingleExprTraceRefiner<S extends ExprState, A extends ExprAction, P extends Prec, R extends Refutation>
-		implements Refiner<S, A, P> {
+		implements Refiner<S, A, ARG<S, A>, P, Trace<S, A>> {
 
 	private final ExprTraceChecker<R> exprTraceChecker;
 	private final PrecRefiner<S, A, P, R> precRefiner;
@@ -58,7 +58,7 @@ public final class SingleExprTraceRefiner<S extends ExprState, A extends ExprAct
 	}
 
 	@Override
-	public RefinerResult<S, A, P> refine(final ARG<S, A> arg, final P prec) {
+	public RefinerResult<S, A, P, Trace<S, A>> refine(final ARG<S, A> arg, final P prec) {
 		checkNotNull(arg);
 		checkNotNull(prec);
 		assert !arg.isSafe() : "ARG must be unsafe";

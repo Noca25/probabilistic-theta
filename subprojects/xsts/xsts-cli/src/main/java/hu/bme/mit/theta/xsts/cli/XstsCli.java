@@ -29,6 +29,7 @@ import hu.bme.mit.theta.xsts.pnml.PnmlToXSTS;
 import hu.bme.mit.theta.xsts.pnml.elements.PnmlNet;
 
 import java.io.*;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -134,8 +135,8 @@ public class XstsCli {
 				return;
 			}
 
-			final XstsConfig<?, ?, ?> configuration = buildConfiguration(xsts);
-			final SafetyResult<?, ?> status = check(configuration);
+			final XstsConfig<?, ?, ?, ?, ?> configuration = buildConfiguration(xsts);
+			final SafetyResult<?, ?, ?, ?> status = check(configuration);
 			sw.stop();
 			printResult(status, xsts, sw.elapsed(TimeUnit.MILLISECONDS));
 			if (status.isUnsafe() && cexfile != null) {
@@ -147,7 +148,7 @@ public class XstsCli {
 		}
 	}
 
-	private SafetyResult<?, ?> check(XstsConfig<?, ?, ?> configuration) throws Exception {
+	private SafetyResult<?, ?, ?, ?> check(XstsConfig<?, ?, ?, ?, ?> configuration) throws Exception {
 		try {
 			return configuration.check();
 		} catch (final Exception ex) {
@@ -185,7 +186,7 @@ public class XstsCli {
 		}
 	}
 
-	private XstsConfig<?, ?, ?> buildConfiguration(final XSTS xsts) throws Exception {
+	private XstsConfig<?, ?, ?, ?, ?> buildConfiguration(final XSTS xsts) throws Exception {
 		try {
 			return new XstsConfigBuilder(domain, refinement, Z3SolverFactory.getInstance())
 					.maxEnum(maxEnum).maxPredCount(maxPredCount).initPrec(initPrec).pruneStrategy(pruneStrategy)
@@ -195,7 +196,7 @@ public class XstsCli {
 		}
 	}
 
-	private void printResult(final SafetyResult<?, ?> status, final XSTS sts, final long totalTimeMs) {
+	private void printResult(final SafetyResult<?, ?, ?, ?> status, final XSTS sts, final long totalTimeMs) {
 		final CegarStatistics stats = (CegarStatistics) status.getStats().get();
 		if (benchmarkMode) {
 			writer.cell(status.isSafe());
@@ -204,9 +205,11 @@ public class XstsCli {
 			writer.cell(stats.getAbstractorTimeMs());
 			writer.cell(stats.getRefinerTimeMs());
 			writer.cell(stats.getIterations());
-			writer.cell(status.getArg().size());
-			writer.cell(status.getArg().getDepth());
-			writer.cell(status.getArg().getMeanBranchingFactor());
+
+			for (Map.Entry<String, Long> entry : status.getAbstraction().getMetrics().entrySet()) {
+				writer.cell(entry.getValue());
+			}
+
 			if (status.isUnsafe()) {
 				writer.cell(status.asUnsafe().getTrace().length() + "");
 			} else {
@@ -234,7 +237,7 @@ public class XstsCli {
 		}
 	}
 
-	private void writeCex(final SafetyResult.Unsafe<?, ?> status, final XSTS xsts) throws FileNotFoundException {
+	private void writeCex(final SafetyResult.Unsafe<?, ?, ?, ?> status, final XSTS xsts) throws FileNotFoundException {
 
 		@SuppressWarnings("unchecked") final Trace<XstsState<?>, XstsAction> trace = (Trace<XstsState<?>, XstsAction>) status.getTrace();
 		final XstsStateSequence concrTrace = XstsTraceConcretizerUtil.concretize(trace, Z3SolverFactory.getInstance(), xsts);

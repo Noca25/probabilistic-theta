@@ -17,14 +17,9 @@ package hu.bme.mit.theta.cfa.analysis.config;
 
 import static hu.bme.mit.theta.core.type.booltype.BoolExprs.True;
 
-import hu.bme.mit.theta.analysis.Action;
-import hu.bme.mit.theta.analysis.Analysis;
-import hu.bme.mit.theta.analysis.Prec;
-import hu.bme.mit.theta.analysis.State;
-import hu.bme.mit.theta.analysis.algorithm.ArgBuilder;
-import hu.bme.mit.theta.analysis.algorithm.ArgNodeComparators;
+import hu.bme.mit.theta.analysis.*;
+import hu.bme.mit.theta.analysis.algorithm.*;
 import hu.bme.mit.theta.analysis.algorithm.ArgNodeComparators.ArgNodeComparator;
-import hu.bme.mit.theta.analysis.algorithm.SafetyChecker;
 import hu.bme.mit.theta.analysis.algorithm.cegar.Abstractor;
 import hu.bme.mit.theta.analysis.algorithm.cegar.BasicAbstractor;
 import hu.bme.mit.theta.analysis.algorithm.cegar.CegarChecker;
@@ -224,7 +219,10 @@ public class CfaConfigBuilder {
 		return this;
 	}
 
-	public CfaConfig<? extends State, ? extends Action, ? extends Prec> build(final CFA cfa, final CFA.Loc errLoc) {
+	public CfaConfig<
+			? extends State, ? extends Action, ? extends Prec,
+			? extends Abstraction<?, ?>,
+			? extends Counterexample<?, ?>> build(final CFA cfa, final CFA.Loc errLoc) {
 		final ItpSolver solver = solverFactory.createItpSolver();
 		final CfaLts lts = encoding.getLts(errLoc);
 
@@ -233,13 +231,16 @@ public class CfaConfigBuilder {
 					.create(cfa.getInitLoc(), ExplStmtAnalysis.create(solver, True(), maxEnum));
 			final ArgBuilder<CfaState<ExplState>, CfaAction, CfaPrec<ExplPrec>> argBuilder = ArgBuilder.create(lts,
 					analysis, s -> s.getLoc().equals(errLoc), true);
-			final Abstractor<CfaState<ExplState>, CfaAction, CfaPrec<ExplPrec>> abstractor = BasicAbstractor
+			final var abstractor = BasicAbstractor
 					.builder(argBuilder).projection(CfaState::getLoc)
 					.waitlist(PriorityWaitlist.create(search.getComp(cfa, errLoc)))
 					.stopCriterion(refinement == Refinement.MULTI_SEQ ? StopCriterions.fullExploration()
 							: StopCriterions.firstCex()).logger(logger).build();
 
-			Refiner<CfaState<ExplState>, CfaAction, CfaPrec<ExplPrec>> refiner;
+			Refiner<CfaState<ExplState>,
+					CfaAction, ARG<CfaState<ExplState>, CfaAction>,
+					CfaPrec<ExplPrec>,
+					Trace<CfaState<ExplState>, CfaAction>> refiner;
 
 			switch (refinement) {
 				case FW_BIN_ITP:
@@ -335,7 +336,7 @@ public class CfaConfigBuilder {
 							domain + " domain does not support " + refinement + " refinement.");
 			}
 
-			final SafetyChecker<CfaState<ExplState>, CfaAction, CfaPrec<ExplPrec>> checker = CegarChecker
+			final var checker = CegarChecker
 					.create(abstractor, refiner, logger);
 
 			CfaPrec<ExplPrec> prec;
@@ -373,7 +374,7 @@ public class CfaConfigBuilder {
 					.create(cfa.getInitLoc(), PredAnalysis.create(solver, predAbstractor, True()));
 			final ArgBuilder<CfaState<PredState>, CfaAction, CfaPrec<PredPrec>> argBuilder = ArgBuilder.create(lts,
 					analysis, s -> s.getLoc().equals(errLoc), true);
-			final Abstractor<CfaState<PredState>, CfaAction, CfaPrec<PredPrec>> abstractor = BasicAbstractor
+			final var abstractor = BasicAbstractor
 					.builder(argBuilder).projection(CfaState::getLoc)
 					.waitlist(PriorityWaitlist.create(search.getComp(cfa, errLoc)))
 					.stopCriterion(refinement == Refinement.MULTI_SEQ ? StopCriterions.fullExploration()
@@ -425,7 +426,11 @@ public class CfaConfigBuilder {
 							domain + " domain does not support " + refinement + " refinement.");
 			}
 			final ItpRefToPredPrec refToPrec = new ItpRefToPredPrec(predSplit.splitter);
-			Refiner<CfaState<PredState>, CfaAction, CfaPrec<PredPrec>> refiner;
+			Refiner<CfaState<PredState>,
+					CfaAction,
+					ARG<CfaState<PredState>, CfaAction>,
+					CfaPrec<PredPrec>,
+					Trace<CfaState<PredState>, CfaAction>> refiner;
 
 			if (refinement == Refinement.MULTI_SEQ) {
 				refiner = MultiExprTraceRefiner.create(exprTraceChecker,
@@ -435,8 +440,7 @@ public class CfaConfigBuilder {
 						precGranularity.createRefiner(refToPrec), pruneStrategy, logger);
 			}
 
-			final SafetyChecker<CfaState<PredState>, CfaAction, CfaPrec<PredPrec>> checker = CegarChecker
-					.create(abstractor, refiner, logger);
+			final var checker = CegarChecker.create(abstractor, refiner, logger);
 
 			CfaPrec<PredPrec> prec;
 

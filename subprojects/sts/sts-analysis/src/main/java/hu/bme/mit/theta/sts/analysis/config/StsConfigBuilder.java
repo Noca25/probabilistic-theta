@@ -19,15 +19,9 @@ import static hu.bme.mit.theta.core.type.booltype.BoolExprs.Not;
 
 import java.util.function.Predicate;
 
-import hu.bme.mit.theta.analysis.Action;
-import hu.bme.mit.theta.analysis.Analysis;
-import hu.bme.mit.theta.analysis.LTS;
-import hu.bme.mit.theta.analysis.Prec;
-import hu.bme.mit.theta.analysis.State;
-import hu.bme.mit.theta.analysis.algorithm.ArgBuilder;
-import hu.bme.mit.theta.analysis.algorithm.ArgNodeComparators;
+import hu.bme.mit.theta.analysis.*;
+import hu.bme.mit.theta.analysis.algorithm.*;
 import hu.bme.mit.theta.analysis.algorithm.ArgNodeComparators.ArgNodeComparator;
-import hu.bme.mit.theta.analysis.algorithm.SafetyChecker;
 import hu.bme.mit.theta.analysis.algorithm.cegar.Abstractor;
 import hu.bme.mit.theta.analysis.algorithm.cegar.BasicAbstractor;
 import hu.bme.mit.theta.analysis.algorithm.cegar.CegarChecker;
@@ -153,7 +147,10 @@ public final class StsConfigBuilder {
 		return this;
 	}
 
-	public StsConfig<? extends State, ? extends Action, ? extends Prec> build(final STS sts) {
+	public StsConfig<
+			? extends State, ? extends Action, ? extends Prec,
+			? extends Abstraction<?,?>, ? extends Counterexample<?, ?>
+			> build(final STS sts) {
 		final ItpSolver solver = solverFactory.createItpSolver();
 		final LTS<State, StsAction> lts = StsLts.create(sts);
 		final Expr<BoolType> init = sts.getInit();
@@ -164,13 +161,14 @@ public final class StsConfigBuilder {
 			final Analysis<ExplState, ExprAction, ExplPrec> analysis = ExplAnalysis.create(solver, init);
 			final ArgBuilder<ExplState, StsAction, ExplPrec> argBuilder = ArgBuilder.create(lts, analysis, target,
 					true);
-			final Abstractor<ExplState, StsAction, ExplPrec> abstractor = BasicAbstractor.builder(argBuilder)
+			final var abstractor = BasicAbstractor.builder(argBuilder)
 					.waitlist(PriorityWaitlist.create(search.comparator))
 					.stopCriterion(refinement == Refinement.MULTI_SEQ ? StopCriterions.fullExploration()
 							: StopCriterions.firstCex())
 					.logger(logger).build();
 
-			Refiner<ExplState, StsAction, ExplPrec> refiner = null;
+			Refiner<ExplState, StsAction, ARG<ExplState, StsAction>,
+					ExplPrec, Trace<ExplState, StsAction>> refiner = null;
 
 			switch (refinement) {
 				case FW_BIN_ITP:
@@ -198,7 +196,7 @@ public final class StsConfigBuilder {
 							domain + " domain does not support " + refinement + " refinement.");
 			}
 
-			final SafetyChecker<ExplState, StsAction, ExplPrec> checker = CegarChecker.create(abstractor, refiner,
+			final var checker = CegarChecker.create(abstractor, refiner,
 					logger);
 			final ExplPrec prec = initPrec.builder.createExpl(sts);
 			return StsConfig.create(checker, prec);
@@ -223,7 +221,7 @@ public final class StsConfigBuilder {
 					init);
 			final ArgBuilder<PredState, StsAction, PredPrec> argBuilder = ArgBuilder.create(lts, analysis, target,
 					true);
-			final Abstractor<PredState, StsAction, PredPrec> abstractor = BasicAbstractor.builder(argBuilder)
+			final var abstractor = BasicAbstractor.builder(argBuilder)
 					.waitlist(PriorityWaitlist.create(search.comparator))
 					.stopCriterion(refinement == Refinement.MULTI_SEQ ? StopCriterions.fullExploration()
 							: StopCriterions.firstCex())
@@ -247,7 +245,7 @@ public final class StsConfigBuilder {
 					throw new UnsupportedOperationException(
 							domain + " domain does not support " + refinement + " refinement.");
 			}
-			Refiner<PredState, StsAction, PredPrec> refiner;
+			Refiner<PredState, StsAction, ARG<PredState,StsAction>, PredPrec, Trace<PredState, StsAction>> refiner;
 			if (refinement == Refinement.MULTI_SEQ) {
 				refiner = MultiExprTraceRefiner.create(exprTraceChecker,
 						JoiningPrecRefiner.create(new ItpRefToPredPrec(predSplit.splitter)), pruneStrategy, logger);
@@ -256,7 +254,7 @@ public final class StsConfigBuilder {
 						JoiningPrecRefiner.create(new ItpRefToPredPrec(predSplit.splitter)), pruneStrategy, logger);
 			}
 
-			final SafetyChecker<PredState, StsAction, PredPrec> checker = CegarChecker.create(abstractor, refiner,
+			final var checker = CegarChecker.create(abstractor, refiner,
 					logger);
 
 			final PredPrec prec = initPrec.builder.createPred(sts);

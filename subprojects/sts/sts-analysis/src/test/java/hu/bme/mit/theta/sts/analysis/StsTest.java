@@ -82,7 +82,7 @@ public class StsTest {
 				throw new UnsupportedOperationException("STS contains multiple properties.");
 			sts = Utils.singleElementOf(spec.getAllSts());
 		}
-		StsConfig<? extends State, ? extends Action, ? extends Prec> config
+		var config
 				= new StsConfigBuilder(domain, refinement, Z3SolverFactory.getInstance()).build(sts);
 		Assert.assertEquals(isSafe, config.check().isSafe());
 	}

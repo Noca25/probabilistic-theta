@@ -12,21 +12,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package hu.bme.mit.theta.analysis.algorithm;
 
 import hu.bme.mit.theta.analysis.Action;
-import hu.bme.mit.theta.analysis.Counterexample;
-import hu.bme.mit.theta.analysis.Prec;
 import hu.bme.mit.theta.analysis.State;
 
-public interface SafetyChecker<
-		S extends State,
-		A extends Action,
-		P extends Prec,
-		AA extends Abstraction<S, A>,
-		C extends Counterexample<S, A>
-		> {
+import java.util.Collection;
+import java.util.Map;
 
-	SafetyResult<S, A, AA, C> check(final P prec);
+public interface Abstraction<TState extends State, TAction extends Action> {
+
+    Map<String, Long> getMetrics();
+
+    Collection<String> getMetricNames();
 
 }

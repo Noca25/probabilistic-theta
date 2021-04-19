@@ -100,7 +100,7 @@ public class StsExplTest {
 
 		final ArgBuilder<ExplState, StsAction, ExplPrec> argBuilder = ArgBuilder.create(lts, analysis, target);
 
-		final Abstractor<ExplState, StsAction, ExplPrec> abstractor = BasicAbstractor.builder(argBuilder)
+		final var abstractor = BasicAbstractor.builder(argBuilder)
 				.waitlist(PriorityWaitlist.create(ArgNodeComparators.bfs())).logger(logger).build();
 
 		final ExprTraceChecker<VarsRefutation> exprTraceChecker = ExprTraceUnsatCoreChecker.create(sts.getInit(),
@@ -109,11 +109,11 @@ public class StsExplTest {
 		final SingleExprTraceRefiner<ExplState, StsAction, ExplPrec, VarsRefutation> refiner = SingleExprTraceRefiner
 				.create(exprTraceChecker, JoiningPrecRefiner.create(new VarsRefToExplPrec()), PruneStrategy.LAZY, logger);
 
-		final SafetyChecker<ExplState, StsAction, ExplPrec> checker = CegarChecker.create(abstractor, refiner, logger);
+		final var checker = CegarChecker.create(abstractor, refiner, logger);
 
-		final SafetyResult<ExplState, StsAction> safetyStatus = checker.check(prec);
+		final var safetyStatus = checker.check(prec);
 
-		final ARG<ExplState, StsAction> arg = safetyStatus.getArg();
+		final ARG<ExplState, StsAction> arg = safetyStatus.getAbstraction();
 		assertTrue(isWellLabeled(arg, solver));
 
 		// System.out.println(new

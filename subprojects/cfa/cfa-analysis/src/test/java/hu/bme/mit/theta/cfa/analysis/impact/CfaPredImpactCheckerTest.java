@@ -50,12 +50,12 @@ public final class CfaPredImpactCheckerTest {
 				l -> l.equals(cfa.getErrorLoc().get()), solver);
 
 		// Act
-		final SafetyResult<? extends ExprState, ? extends ExprAction> status = checker.check(UnitPrec.getInstance());
+		final var status = checker.check(UnitPrec.getInstance());
 
 		// Assert
 		assertTrue(status.isSafe());
 
-		final ARG<? extends ExprState, ? extends ExprAction> arg = status.getArg();
+		final ARG<? extends ExprState, ? extends ExprAction> arg = status.getAbstraction();
 		arg.minimize();
 
 		final ArgChecker argChecker = ArgChecker.create(solver);

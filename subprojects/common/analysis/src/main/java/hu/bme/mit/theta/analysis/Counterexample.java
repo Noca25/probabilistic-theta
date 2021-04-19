@@ -12,21 +12,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package hu.bme.mit.theta.analysis.algorithm;
+
+package hu.bme.mit.theta.analysis;
 
 import hu.bme.mit.theta.analysis.Action;
-import hu.bme.mit.theta.analysis.Counterexample;
-import hu.bme.mit.theta.analysis.Prec;
 import hu.bme.mit.theta.analysis.State;
 
-public interface SafetyChecker<
-		S extends State,
-		A extends Action,
-		P extends Prec,
-		AA extends Abstraction<S, A>,
-		C extends Counterexample<S, A>
-		> {
+public interface Counterexample<TState, TAction> {
 
-	SafetyResult<S, A, AA, C> check(final P prec);
+    int length();
 
 }

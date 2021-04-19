@@ -29,7 +29,8 @@ import hu.bme.mit.theta.common.visualization.Graph;
 import hu.bme.mit.theta.common.visualization.LineStyle;
 import hu.bme.mit.theta.common.visualization.NodeAttributes;
 
-public final class TraceVisualizer<S extends State, A extends Action> {
+public final class TraceVisualizer<S extends State, A extends Action>
+		implements Visualizer<Trace<? extends S, ? extends A>> {
 
 	private static final LineStyle LINE_STYLE = LineStyle.NORMAL;
 	private static final String STATE_ID_PREFIX = "s_";
@@ -55,6 +56,7 @@ public final class TraceVisualizer<S extends State, A extends Action> {
 		return LazyHolder.DEFAULT;
 	}
 
+	@Override
 	public Graph visualize(final Trace<? extends S, ? extends A> trace) {
 		final Graph graph = new Graph(TRACE_ID, TRACE_LABEL);
 

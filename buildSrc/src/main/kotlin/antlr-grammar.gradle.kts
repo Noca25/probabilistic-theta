@@ -25,4 +25,5 @@ tasks {
 
         arguments.addAll(listOf("-package", packageName, "-Werror", "-visitor"))
     }
+    findByName("compileKotlin")?.dependsOn("generateGrammarSource")
 }

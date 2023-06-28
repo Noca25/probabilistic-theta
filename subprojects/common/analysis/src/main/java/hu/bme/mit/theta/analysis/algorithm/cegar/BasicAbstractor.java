@@ -92,8 +92,16 @@ public final class BasicAbstractor<S extends State, A extends Action, P extends 
 		reachedSet.addAll(arg.getNodes());
 		waitlist.addAll(arg.getIncompleteNodes());
 
+		var i = 0;
 		if (!stopCriterion.canStop(arg)) {
 			while (!waitlist.isEmpty()) {
+				i++;
+				if(i % 100 == 0)
+					System.out.println(
+							arg.getAllNodes().stream().filter((n)->!n.isCovered()).count() +
+									"/" + arg.getAllNodes().size()
+					);
+
 				final ArgNode<S, A> node = waitlist.remove();
 
 				Collection<ArgNode<S, A>> newNodes = Collections.emptyList();
@@ -127,7 +135,7 @@ public final class BasicAbstractor<S extends State, A extends Action, P extends 
 			return;
 		}
 		for (final ArgNode<S, A> candidate : candidates) {
-			if (candidate.mayCover(node)) {
+			if (candidate.mayCoverStandard(node)) {
 				node.cover(candidate);
 				return;
 			}

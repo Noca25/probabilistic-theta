@@ -20,10 +20,7 @@ import hu.bme.mit.theta.analysis.PartialOrd;
 import hu.bme.mit.theta.analysis.State;
 import hu.bme.mit.theta.common.container.Containers;
 
-import java.util.Collection;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.*;
 import java.util.stream.Stream;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -41,6 +38,7 @@ public final class ARG<S extends State, A extends Action> {
 	public boolean initialized; // Set by ArgBuilder
 	private int nextId = 0;
 	private final PartialOrd<S> partialOrd;
+	private final HashSet<ArgNode<S, A>> allNodes = new HashSet<>();
 
 	private ARG(final PartialOrd<S> partialOrd) {
 		initNodes = Containers.createSet();
@@ -53,6 +51,10 @@ public final class ARG<S extends State, A extends Action> {
 	}
 
 	////
+
+	public Set<ArgNode<S, A>> getAllNodes() {
+		return allNodes;
+	}
 
 	public Stream<ArgNode<S, A>> getInitNodes() {
 		return initNodes.stream();
@@ -110,6 +112,7 @@ public final class ARG<S extends State, A extends Action> {
 		checkNotNull(initState);
 		final ArgNode<S, A> initNode = createNode(initState, 0, target);
 		initNodes.add(initNode);
+		allNodes.add(initNode);
 		return initNode;
 	}
 
@@ -122,6 +125,7 @@ public final class ARG<S extends State, A extends Action> {
 		checkArgument(!node.isTarget(), "Node is target");
 		final ArgNode<S, A> succNode = createNode(succState, node.getDepth() + 1, target);
 		createEdge(node, action, succNode);
+		allNodes.add(succNode);
 		return succNode;
 	}
 
@@ -156,6 +160,7 @@ public final class ARG<S extends State, A extends Action> {
 		}
 		node.descendants().forEach(ArgNode::unsetCoveringNode);
 		node.descendants().forEach(ArgNode::clearCoveredNodes);
+		node.descendants().forEach(allNodes::remove);
 	}
 
 	/**

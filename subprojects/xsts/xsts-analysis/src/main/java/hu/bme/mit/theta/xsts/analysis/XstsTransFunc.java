@@ -31,7 +31,8 @@ public final class XstsTransFunc<S extends ExprState, P extends Prec> implements
 
 		final Collection<XstsState<S>> succStates = new ArrayList<>();
 		final S subState = state.getState();
-		final boolean succWasLastEnv = !state.lastActionWasEnv();
+		//TODO: change "wasLastEnv" to something that is easier to follow
+		final boolean succWasLastEnv = (!action.shouldUseEnv()) || !state.lastActionWasEnv();
 
 		final Collection<? extends S> subSuccStates = transFunc.getSuccStates(subState, action, prec);
 		for (final S subSuccState : subSuccStates) {

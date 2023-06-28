@@ -1,6 +1,6 @@
 plugins {
-    id("java-common")
     id("kotlin-common")
+    id("antlr-grammar")
 }
 
 dependencies {
@@ -8,4 +8,6 @@ dependencies {
     implementation(project(":theta-core"))
     implementation(project(":theta-solver"))
     testImplementation(project(":theta-solver-z3"))
+    testImplementation(project(":theta-xsts"))
+    implementation(files("lib/jhoafparser-1.1.1"))
 }

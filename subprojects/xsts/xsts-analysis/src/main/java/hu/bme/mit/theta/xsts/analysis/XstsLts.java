@@ -3,6 +3,7 @@ package hu.bme.mit.theta.xsts.analysis;
 import hu.bme.mit.theta.analysis.LTS;
 import hu.bme.mit.theta.analysis.expr.ExprState;
 import hu.bme.mit.theta.core.stmt.NonDetStmt;
+import hu.bme.mit.theta.core.stmt.SkipStmt;
 import hu.bme.mit.theta.xsts.XSTS;
 
 import java.util.Collection;
@@ -35,9 +36,15 @@ public final class XstsLts <S extends ExprState> implements LTS<XstsState<S>, Xs
 		else if (state.lastActionWasEnv()) enabledSet = trans;
 		else enabledSet = env;
 
+		boolean useEnv = !(
+				env.getStmts().isEmpty() ||
+				(env.getStmts().size() == 1 &&
+						env.getStmts().get(0).equals(SkipStmt.getInstance()))
+		);
+
 		return enabledSet.getStmts().stream()
 				.map(stmt -> stmtOptimizer.optimizeStmt(state,stmt))
-				.map(XstsAction::create)
+				.map(stmt -> XstsAction.create(stmt, useEnv))
 				.collect(Collectors.toList());
 	}
 }

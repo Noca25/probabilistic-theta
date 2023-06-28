@@ -27,6 +27,7 @@ import hu.bme.mit.theta.xsts.analysis.concretizer.XstsTraceConcretizerUtil;
 import hu.bme.mit.theta.xsts.analysis.config.XstsConfig;
 import hu.bme.mit.theta.xsts.analysis.config.XstsConfigBuilder;
 import hu.bme.mit.theta.xsts.analysis.config.XstsConfigBuilder.*;
+import hu.bme.mit.theta.xsts.analysis.config.XstsLtlConfigBuilder;
 import hu.bme.mit.theta.xsts.dsl.XstsDslManager;
 import hu.bme.mit.theta.xsts.pnml.PnmlParser;
 import hu.bme.mit.theta.xsts.pnml.PnmlToXSTS;
@@ -106,6 +107,12 @@ public class XstsCli {
 
 	@Parameter(names = "--no-cex-check")
 	boolean noStuckCheck = false;
+
+	@Parameter(names = "--ltl")
+	String ltl = null;
+
+	@Parameter(names = "--no-cover")
+	boolean noCover = false;
 
 	private Logger logger;
 
@@ -217,9 +224,15 @@ public class XstsCli {
 */
 
 		try {
-			return new XstsConfigBuilder(domain, refinement, Z3SolverFactory.getInstance())
+			if (ltl == null) return new XstsConfigBuilder(domain, refinement, Z3SolverFactory.getInstance())
 					.maxEnum(maxEnum).autoExpl(autoExpl).initPrec(initPrec).pruneStrategy(pruneStrategy)
-					.search(search).predSplit(predSplit).optimizeStmts(optimizeStmts).logger(logger).build(xsts);
+					.search(search).predSplit(predSplit).optimizeStmts(optimizeStmts).logger(logger).noCover(noCover)
+					.build(xsts);
+			else return new XstsLtlConfigBuilder(domain, refinement, Z3SolverFactory.getInstance())
+						.maxEnum(maxEnum).autoExpl(autoExpl).initPrec(initPrec).pruneStrategy(pruneStrategy)
+						.search(search).predSplit(predSplit).optimizeStmts(optimizeStmts)
+						.logger(logger).ltl(ltl).noCover(noCover).build(xsts);
+
 		} catch (final Exception ex) {
 			throw new Exception("Could not create configuration: " + ex.getMessage(), ex);
 		}

@@ -16,11 +16,14 @@
 package hu.bme.mit.theta.analysis.expl;
 
 import hu.bme.mit.theta.analysis.TransFunc;
+import hu.bme.mit.theta.analysis.expl.MultiValuationStmtApplier.ApplyResult.Status;
 import hu.bme.mit.theta.analysis.expl.StmtApplier.ApplyResult;
 import hu.bme.mit.theta.analysis.expr.ExprStates;
 import hu.bme.mit.theta.analysis.expr.StmtAction;
+import hu.bme.mit.theta.analysis.stmtoptimizer.StmtSimplifier;
 import hu.bme.mit.theta.core.model.MutableValuation;
 import hu.bme.mit.theta.core.stmt.Stmt;
+import hu.bme.mit.theta.core.stmt.Stmts;
 import hu.bme.mit.theta.core.type.Expr;
 import hu.bme.mit.theta.core.type.booltype.BoolType;
 import hu.bme.mit.theta.core.utils.StmtUnfoldResult;
@@ -31,6 +34,7 @@ import hu.bme.mit.theta.solver.Solver;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -42,6 +46,8 @@ public final class ExplStmtTransFunc implements TransFunc<ExplState, StmtAction,
 	private final Solver solver;
 	// 0 means arbitrarily many
 	private final int maxSuccToEnumerate;
+
+	private final MultiValuationStmtApplier multiValApplier = new MultiValuationStmtApplier();
 
 	private ExplStmtTransFunc(final Solver solver, final int maxSuccToEnumerate) {
 		this.solver = checkNotNull(solver);
@@ -61,6 +67,14 @@ public final class ExplStmtTransFunc implements TransFunc<ExplState, StmtAction,
 	Collection<ExplState> getSuccStates(final ExplState state, final List<Stmt> stmts, final ExplPrec prec) {
 		final MutableValuation val = MutableValuation.copyOf(state);
 		boolean triedSolver = false;
+
+		if(maxSuccToEnumerate == 0) { //TODO: generalize to any maxEnum
+			var stmt = stmts.size() == 1 ? stmts.get(0) : Stmts.SequenceStmt(stmts);
+			var applierResult = multiValApplier.apply(stmt, List.of(val), false);
+			if (applierResult.getStatus() != Status.FAILURE)
+				return applierResult.getValuations()
+						.stream().distinct().map(prec::createState).collect(Collectors.toList());
+		}
 
 		for (int i = 0; i < stmts.size(); i++) {
 			final Stmt stmt = stmts.get(i);

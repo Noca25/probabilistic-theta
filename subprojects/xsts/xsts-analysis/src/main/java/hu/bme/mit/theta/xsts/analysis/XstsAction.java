@@ -11,16 +11,34 @@ public final class XstsAction extends StmtAction {
 
 	private final List<Stmt> stmts;
 
+	private final boolean useEnv;
+
 	private XstsAction(final List<Stmt> stmts) {
+		this(stmts, true);
+	}
+	private XstsAction(final List<Stmt> stmts, final boolean useEnv) {
 		this.stmts = stmts;
+		this.useEnv = useEnv;
 	}
 
 	public static XstsAction create(final Stmt stmt) {
 		return new XstsAction(ImmutableList.of(stmt));
 	}
 
+	public static XstsAction create(final Stmt stmt, boolean useEnv) {
+		return new XstsAction(ImmutableList.of(stmt), useEnv);
+	}
+
 	public static XstsAction create(final List<Stmt> stmts) {
 		return new XstsAction(stmts);
+	}
+
+	public static XstsAction create(final List<Stmt> stmts, boolean useEnv) {
+		return new XstsAction(stmts, useEnv);
+	}
+
+	public boolean shouldUseEnv() {
+		return useEnv;
 	}
 
 	@Override

@@ -49,6 +49,7 @@ import hu.bme.mit.theta.analysis.expr.refinement.MultiExprTraceRefiner;
 import hu.bme.mit.theta.analysis.expr.refinement.PruneStrategy;
 import hu.bme.mit.theta.analysis.expr.refinement.RefutationToPrec;
 import hu.bme.mit.theta.analysis.expr.refinement.SingleExprTraceRefiner;
+import hu.bme.mit.theta.analysis.ltl.LTL2Buchi;
 import hu.bme.mit.theta.analysis.pred.ExprSplitters;
 import hu.bme.mit.theta.analysis.pred.ItpRefToPredPrec;
 import hu.bme.mit.theta.analysis.pred.PredAbstractors;
@@ -64,7 +65,9 @@ import hu.bme.mit.theta.analysis.stmtoptimizer.DefaultStmtOptimizer;
 import hu.bme.mit.theta.analysis.waitlist.PriorityWaitlist;
 import hu.bme.mit.theta.common.logging.Logger;
 import hu.bme.mit.theta.common.logging.NullLogger;
+import hu.bme.mit.theta.core.decl.Decl;
 import hu.bme.mit.theta.core.decl.VarDecl;
+import hu.bme.mit.theta.core.stmt.Stmt;
 import hu.bme.mit.theta.core.type.Expr;
 import hu.bme.mit.theta.core.type.booltype.BoolType;
 import hu.bme.mit.theta.solver.Solver;
@@ -85,9 +88,13 @@ import hu.bme.mit.theta.xsts.analysis.initprec.XstsCtrlInitPrec;
 import hu.bme.mit.theta.xsts.analysis.initprec.XstsEmptyInitPrec;
 import hu.bme.mit.theta.xsts.analysis.initprec.XstsInitPrec;
 import hu.bme.mit.theta.xsts.analysis.initprec.XstsPropInitPrec;
+import kotlin.Pair;
 
+import java.util.HashMap;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import static hu.bme.mit.theta.core.type.booltype.BoolExprs.Not;
 
@@ -172,6 +179,7 @@ public class XstsConfigBuilder {
 	private PruneStrategy pruneStrategy = PruneStrategy.LAZY;
 	private OptimizeStmts optimizeStmts = OptimizeStmts.ON;
 	private AutoExpl autoExpl = AutoExpl.NEWOPERANDS;
+	private boolean noCover = false;
 
 	public XstsConfigBuilder(final Domain domain, final Refinement refinement, final SolverFactory solverFactory) {
 		this.domain = domain;
@@ -186,6 +194,11 @@ public class XstsConfigBuilder {
 
 	public XstsConfigBuilder search(final Search search) {
 		this.search = search;
+		return this;
+	}
+
+	public XstsConfigBuilder noCover(boolean noCover) {
+		this.noCover = noCover;
 		return this;
 	}
 
@@ -222,6 +235,9 @@ public class XstsConfigBuilder {
 	public XstsConfig<? extends State, ? extends Action, ? extends Prec> build(final XSTS xsts) {
 		final Solver abstractionSolver = solverFactory.createSolver();
 		final Expr<BoolType> negProp = Not(xsts.getProp());
+		Function<XstsState<?>, ?> projection = noCover
+				? ((XstsState<?> s) -> s)
+				: ((XstsState<?> s) -> new Pair<>(s.isInitialized(), s.lastActionWasEnv()));
 
 		if (domain == Domain.EXPL) {
 			final LTS<XstsState<ExplState>, XstsAction> lts;
@@ -239,6 +255,7 @@ public class XstsConfigBuilder {
 					.waitlist(PriorityWaitlist.create(search.comparator))
 					.stopCriterion(refinement == Refinement.MULTI_SEQ ? StopCriterions.fullExploration()
 							: StopCriterions.firstCex())
+					.projection(projection)
 					.logger(logger).build();
 
 			Refiner<XstsState<ExplState>, XstsAction, ExplPrec> refiner = null;
@@ -305,7 +322,9 @@ public class XstsConfigBuilder {
 					.waitlist(PriorityWaitlist.create(search.comparator))
 					.stopCriterion(refinement == Refinement.MULTI_SEQ ? StopCriterions.fullExploration()
 							: StopCriterions.firstCex())
-					.logger(logger).build();
+					.logger(logger)
+					.projection(projection)
+					.build();
 
 			ExprTraceChecker<ItpRefutation> exprTraceChecker = null;
 			switch (refinement) {
@@ -388,7 +407,9 @@ public class XstsConfigBuilder {
 					.waitlist(PriorityWaitlist.create(search.comparator))
 					.stopCriterion(refinement == Refinement.MULTI_SEQ ? StopCriterions.fullExploration()
 							: StopCriterions.firstCex())
-					.logger(logger).build();
+					.logger(logger)
+					.projection(projection)
+					.build();
 
 			Refiner<XstsState<Prod2State<ExplState, PredState>>, XstsAction, Prod2Prec<ExplPrec, PredPrec>> refiner = null;
 

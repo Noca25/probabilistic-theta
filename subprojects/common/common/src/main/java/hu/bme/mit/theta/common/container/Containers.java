@@ -1,6 +1,7 @@
 package hu.bme.mit.theta.common.container;
 
 import hu.bme.mit.theta.common.container.factory.ContainerFactory;
+import hu.bme.mit.theta.common.container.factory.HashContainerFactory;
 import hu.bme.mit.theta.common.container.factory.LinkedHashContainerFactory;
 
 import java.util.Collection;

@@ -39,7 +39,15 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private val useMust: Boolean = false,
     private val verboseLogging: Boolean = false,
     private val logger: Logger = ConsoleLogger(Logger.Level.VERBOSE),
-    private val resetOnUncover: Boolean = true
+    private val resetOnUncover: Boolean = true,
+    private val useMonotonicBellman: Boolean = false,
+    private val blockSeq: (
+        nodes: List<ProbLazyChecker<SC, SA, A>.Node>,
+        guards: List<Expr<BoolType>>,
+        actions: List<A>,
+        toBlockAtLast: Expr<BoolType>) -> List<SA> =
+        {_,_,_,_ -> throw UnsupportedOperationException("No sequence interpolation method specified")},
+    private val useSeq: Boolean = false
 ) {
     private var numCoveredNodes = 0
     private var numRealCovers = 0
@@ -124,6 +132,43 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             onUncover?.invoke(this)
         }
 
+        fun strengthenWithSeq(toBlock: Expr<BoolType>) {
+            var currNode = this
+            val nodes = arrayListOf(currNode)
+            val guards = arrayListOf<Expr<BoolType>>()
+            val actions = arrayListOf<A>()
+
+            while (currNode.backEdges.isNotEmpty()) {
+                if(currNode.backEdges.size > 1)
+                    throw UnsupportedOperationException("Sequence interpolation for multiple parents not implemented yet")
+                val backEdge = currNode.backEdges.first()
+                guards.add(0, backEdge.guard)
+                actions.add(0, backEdge.getActionFor(currNode))
+                currNode = backEdge.source
+                nodes.add(0, currNode)
+            }
+
+            val newLabels = blockSeq(nodes, guards, actions, toBlock)
+            val forceCovers = arrayListOf<Node>()
+            for ((i, node) in nodes.withIndex()) {
+                if(newLabels[i] == node.sa) continue
+                node.sa = newLabels[i]
+
+                for (coveredNode in ArrayList(node.coveredNodes)) { // copy because removeCover() modifies it inside the loop
+                    if (!checkContainment(coveredNode.sc, node.sa)) {
+                        coveredNode.removeCover()
+                        waitlist.add(coveredNode)
+                    } else {
+                        forceCovers.add(coveredNode)
+                    }
+                }
+                forceCovers.forEach {
+                    if(it.isCovered) // the previous strengthenForCovering calls might have removed the cover of the current node
+                        it.strengthenForCovering()
+                }
+            }
+        }
+
         fun changeAbstractLabel(
             newLabel: SA
         ) {
@@ -159,7 +204,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             require(isCovered)
             val coverer = coveringNode!!
             if (!isLeq(sa, coverer.sa)) {
-                changeAbstractLabel(block(sa, Not(coverer.sa.toExpr()), sc))
+                if (useSeq) strengthenWithSeq(Not(coverer.sa.toExpr()))
+                else changeAbstractLabel(block(sa, Not(coverer.sa.toExpr()), sc))
             }
         }
 
@@ -170,12 +216,23 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             val toBlock =
                 if (negate) Not(c.guard)
                 else c.guard
-            val modifiedAbstract = block(sa, toBlock, sc)
-            changeAbstractLabel(modifiedAbstract)
+
+            if(useSeq) strengthenWithSeq(toBlock)
+            else {
+                val modifiedAbstract = block(sa, toBlock, sc)
+                changeAbstractLabel(modifiedAbstract)
+            }
         }
 
         override fun toString(): String {
             return "Node[$id](c: $sc, a: $sa)"
+        }
+
+        fun getChildren(): List<Node> = this.getOutgoingEdges().flatMap { it.targetList.map { it.second } }
+
+        fun getDescendants(): List<Node> {
+            val children = this.getOutgoingEdges().flatMap { it.targetList.map { it.second } }
+            return children + children.flatMap(ProbLazyChecker<SC, SA, A>.Node::getDescendants)
         }
     }
 
@@ -517,6 +574,11 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                     var lnew = if (Lnew[node] == 1.0) 1.0 else (goal.select(
                         merged[node]!!.second.map { it.target.expectedValue { L.getValue(it.second) } }
                     ) ?: 0.0)
+
+                    if (useMonotonicBellman) {
+                        unew = minOf(unew, Unew[node]!!)
+                        lnew = maxOf(lnew, Lnew[node]!!)
+                    }
 
                     for (siblingNode in merged[node]!!.first) {
                         Unew[siblingNode] = unew

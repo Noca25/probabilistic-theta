@@ -225,7 +225,7 @@ final class StmtToExprTransformer {
             var jointIndexing = indexing;
             for (StmtUnfoldResult r : results) {
                 exprs.addAll(r.exprs);
-                jointIndexing.join(r.indexing);
+                jointIndexing = jointIndexing.join(r.indexing);
             }
             final var expr = SmartBoolExprs.And(exprs);
             return StmtUnfoldResult.of(ImmutableList.of(expr), jointIndexing);

@@ -50,6 +50,14 @@ class MDPBVISolver<N, A>(
             return action.reward[target] ?: 0.0
         }
 
+        override fun getLowerInitialValue(n: MergedNode): Double {
+            TODO("Not yet implemented")
+        }
+
+        override fun getUpperInitialValue(n: MergedNode): Double {
+            TODO("Not yet implemented")
+        }
+
     }
 
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {

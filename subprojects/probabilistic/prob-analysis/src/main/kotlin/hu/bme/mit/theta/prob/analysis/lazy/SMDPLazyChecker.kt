@@ -1,6 +1,10 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
+import hu.bme.mit.theta.analysis.Trace
 import hu.bme.mit.theta.analysis.expl.*
+import hu.bme.mit.theta.analysis.expr.ExprAction
+import hu.bme.mit.theta.analysis.expr.StmtAction
+import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceSeqItpChecker
 import hu.bme.mit.theta.analysis.pred.*
 import hu.bme.mit.theta.common.container.Containers
 import hu.bme.mit.theta.core.decl.Decl
@@ -8,6 +12,7 @@ import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.core.model.MutableValuation
 import hu.bme.mit.theta.core.model.Valuation
 import hu.bme.mit.theta.core.stmt.Stmts
+import hu.bme.mit.theta.core.stmt.Stmts.Assume
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
@@ -17,6 +22,7 @@ import hu.bme.mit.theta.core.utils.ExprSimplifier
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
 import hu.bme.mit.theta.core.utils.WpState
+import hu.bme.mit.theta.prob.analysis.BasicStmtAction
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
@@ -48,7 +54,8 @@ class SMDPLazyChecker(
         brtdpStrategy: BRTDPStrategy = BRTDPStrategy.MAX_DIFF,
         useMay: Boolean = true,
         useMust: Boolean = false,
-        threshold: Double = 1e-7
+        threshold: Double = 1e-7,
+        useSeq: Boolean = false
     ): Double {
 
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
@@ -103,7 +110,9 @@ class SMDPLazyChecker(
             smdpReachabilityTask.goal,
             useMay,
             useMust,
-            verboseLogging
+            verboseLogging,
+            blockSeq = ExplDomain::blockSeq,
+            useSeq = useSeq
         )
         val successorSelection = when (brtdpStrategy) {
             BRTDPStrategy.MAX_DIFF -> checker::maxDiffSelection
@@ -128,7 +137,8 @@ class SMDPLazyChecker(
         brtdpStrategy: BRTDPStrategy = BRTDPStrategy.MAX_DIFF,
         useMay: Boolean = true,
         useMust: Boolean = false,
-        threshold: Double = 1e-7
+        threshold: Double = 1e-7,
+        useSeq: Boolean = false
     ): Double {
 
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
@@ -157,7 +167,7 @@ class SMDPLazyChecker(
         val fullInit = initFunc.getInitStates(fullPrec)
 
         // the task is given as the computation of P_opt(constraint U target_expr)
-        // we add checkingt that constraint is still true to every normal command,
+        // we add checking that the constraint is still true to every normal command,
         // so that we hit a deadlock (w.r.t. normal commands) if it is not
         // the resulting deadlock state is non-rewarding iff the target command is not enabled, so when target_expr is false
 
@@ -188,7 +198,9 @@ class SMDPLazyChecker(
             PredDomain::preImage,
             PredDomain::topAfter,
             smdpReachabilityTask.goal,
-            useMay, useMust, verboseLogging
+            useMay, useMust, verboseLogging,
+            blockSeq = PredDomain::blockSeq,
+            useSeq = useSeq
         )
 
         val successorSelection = when (brtdpStrategy) {
@@ -208,7 +220,7 @@ class SMDPLazyChecker(
         return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
     }
 
-    private object ExplDomain {
+    private val ExplDomain = object {
 
         fun checkContainment(sc: SMDPState<ExplState>, sa: SMDPState<ExplState>): Boolean =
             sc.locs == sa.locs &&
@@ -259,13 +271,44 @@ class SMDPLazyChecker(
             return newAbstractExpl
         }
 
+        fun blockSeq(
+            nodes: List<ProbLazyChecker<SMDPState<ExplState>, SMDPState<ExplState>, SMDPCommandAction>.Node>,
+            guards: List<Expr<BoolType>>,
+            actions: List<SMDPCommandAction>,
+            toBlockAtLast: Expr<BoolType>
+        ): List<SMDPState<ExplState>> {
+            val seqItpChecker = ExprTraceSeqItpChecker.create(nodes.first().sc.toExpr(), toBlockAtLast, itpSolver)
+            val states = nodes.map { it.sa }
+            val actions = guards.zip(actions).map {
+                (g: Expr<BoolType>, a: SMDPCommandAction) ->
+                BasicStmtAction(listOf(Assume(g)) + a.stmts)
+            }
+            val trace = Trace.of(states, actions)
+            val status = seqItpChecker.check(trace)
+            if (status.isFeasible) throw RuntimeException("cannot block sequence")
+            else {
+                return nodes.zip(status.asInfeasible().refutation).map { (node, itp) ->
+                    val newVars: MutableCollection<Decl<*>> = Containers.createSet()
+                    newVars.addAll(ExprUtils.getVars(itp))
+                    newVars.addAll(node.sa.domainState.getDecls())
+                    val builder = ImmutableValuation.builder()
+                    for (decl in newVars) {
+                        builder.put(decl, node.sc.domainState.eval(decl).get())
+                    }
+                    val `val`: Valuation = builder.build()
+                    val newAbstractExpl = SMDPState<ExplState>(ExplState.of(`val`), node.sc.locs)
+                    newAbstractExpl
+                }
+            }
+        }
+
         fun postImage(
             state: SMDPState<ExplState>,
             action: SMDPCommandAction,
             guard: Expr<BoolType>
         ): SMDPState<ExplState> {
             val res = MutableValuation.copyOf(state.domainState.`val`)
-            val stmts = listOf(Stmts.Assume(guard)) + action.stmts
+            val stmts = listOf(Assume(guard)) + action.stmts
             StmtApplier.apply(Stmts.SequenceStmt(stmts), res, true)
             return SMDPState(ExplState.of(res), nextLocs(state.locs, action.destination))
         }
@@ -366,6 +409,39 @@ class SMDPLazyChecker(
             }
 
             return SMDPState(newAbstract, abstrState.locs)
+        }
+
+        fun blockSeq(
+            nodes: List<ProbLazyChecker<SMDPState<ExplState>, SMDPState<PredState>, SMDPCommandAction>.Node>,
+            guards: List<Expr<BoolType>>,
+            actions: List<SMDPCommandAction>,
+            toBlockAtLast: Expr<BoolType>
+        ): List<SMDPState<PredState>> {
+            val seqItpChecker = ExprTraceSeqItpChecker.create(nodes.first().sc.toExpr(), toBlockAtLast, itpSolver)
+            val states = nodes.map { it.sa }
+            val actions = guards.zip(actions).map {
+                    (g: Expr<BoolType>, a: SMDPCommandAction) ->
+                BasicStmtAction(listOf(Assume(g)) + a.stmts)
+            }
+            val trace = Trace.of(states, actions)
+            val status = seqItpChecker.check(trace)
+            if (status.isFeasible)
+                throw RuntimeException("cannot block sequence")
+            else {
+                return nodes.zip(status.asInfeasible().refutation).map { (node, itp) ->
+                    val itpConjuncts = ExprUtils.getConjuncts(PathUtils.foldin(itp, 0))
+//                    .filter {
+//                        WithPushPop(smtSolver).use { _ ->
+//                            smtSolver.add(PathUtils.unfold(node.sa.toExpr(), 0))
+//                            smtSolver.add(PathUtils.unfold(Not(it), 0))
+//                            smtSolver.check().isSat
+//                        }
+//                    }
+                    val newConjuncts = node.sa.domainState.preds.toSet().union(itpConjuncts)
+
+                    SMDPState(PredState.of(newConjuncts), node.sc.locs)
+                }
+            }
         }
 
         fun postImage(

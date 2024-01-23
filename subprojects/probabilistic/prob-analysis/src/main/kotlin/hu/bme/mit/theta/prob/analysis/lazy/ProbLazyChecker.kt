@@ -16,7 +16,6 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
 import java.util.Objects
 import java.util.Stack
 import java.util.concurrent.TimeUnit
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -48,7 +47,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         actions: List<A>,
         toBlockAtLast: Expr<BoolType>) -> List<SA> =
         {_,_,_,_ -> throw UnsupportedOperationException("No sequence interpolation method specified")},
-    private val useSeq: Boolean = false
+    private val useSeq: Boolean = false,
+    private val useGameRefinement: Boolean = false
 ) {
     private var numCoveredNodes = 0
     private var numRealCovers = 0
@@ -99,8 +99,13 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             private set
 
         fun getOutgoingEdges(): List<Edge> = outEdges
-        fun createEdge(target: FiniteDistribution<Pair<A, Node>>, guard: Expr<BoolType>): Edge {
-            val newEdge = Edge(this, target, guard)
+        fun createEdge(
+            target: FiniteDistribution<Pair<A, Node>>,
+            guard: Expr<BoolType>,
+            surelyEnabled: Boolean,
+            relatedCommand: ProbabilisticCommand<A>
+        ): Edge {
+            val newEdge = Edge(this, target, guard, surelyEnabled, relatedCommand)
             outEdges.add(newEdge)
             target.support.forEach { (a, n) ->
                 n.backEdges.add(newEdge)
@@ -231,16 +236,24 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         fun getChildren(): List<Node> = this.getOutgoingEdges().flatMap { it.targetList.map { it.second } }
 
+        /**
+         * Recursively get all action-edge descendants. Does not traverse cover edges.
+         */
         fun getDescendants(): List<Node> {
-            val children = this.getOutgoingEdges().flatMap { it.targetList.map { it.second } }
+            val children = getChildren()
             return children + children.flatMap(ProbLazyChecker<SC, SA, A>.Node::getDescendants)
         }
     }
 
     inner class Edge(
-        val source: Node, val target: FiniteDistribution<Pair<A, Node>>, val guard: Expr<BoolType>
+        val source: Node, val target: FiniteDistribution<Pair<A, Node>>, val guard: Expr<BoolType>,
+        surelyEnabled: Boolean, val relatedCommand: ProbabilisticCommand<A>
     ) {
         var targetList = target.support.toList()
+
+        var surelyEnabled = surelyEnabled
+            private set
+
         // used for round-robin strategy
         private var nextChoice = 0
         fun chooseNextRR(): Pair<A, Node> {
@@ -254,6 +267,10 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                 if (n == result) return a
             }
             throw IllegalArgumentException("$result not found in the targets of edge $this")
+        }
+
+        fun makeSurelyEnabled() {
+            surelyEnabled = true
         }
 
         override fun toString(): String {
@@ -691,7 +708,9 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         println("Exploration time (ms): $explorationTime")
         timer.reset()
         timer.start()
-        val errorProb = computeErrorProb(initNode, reachedSet, useBVI, threshold)
+        val errorProb =
+            if(useGameRefinement) computeErrorProbWithRefinement(initNode, reachedSet, useBVI, threshold, threshold)
+            else computeErrorProb(initNode, reachedSet, useBVI, threshold)
         timer.stop()
         val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
         println("Probability computation time (ms): $probTime")
@@ -724,7 +743,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                 val target = cmd.result.transform { a ->
                     val nextState = concreteTransFunc(n.sc, a)
                     val newNode = Node(nextState, topAfter(n.sa, a))
-//                    val newNode = Node(nextState, nextState as SA)
                     children.add(newNode)
                     a to newNode
                 }
@@ -732,7 +750,13 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                     n.strengthenAgainstCommand(cmd, true)
                 }
 
-                n.createEdge(target, cmd.guard)
+                val surelyEnabled =
+                    !useGameRefinement || ( // don't care about it if we don't use game refinement
+                        (useMay && useMust) || // if an Exact-PARG is built, then the standard refinement takes care of it
+                        (useMay && mustBeEnabled(n.sa, cmd))
+                        || (useMust && TODO("is this right?") && mayBeEnabled(n.sa, cmd)))
+
+                n.createEdge(target, cmd.guard, surelyEnabled, cmd)
             } else if (useMay && mayBeEnabled(n.sa, cmd)) {
                 n.strengthenAgainstCommand(cmd, false)
             }
@@ -808,6 +832,76 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         println("Non-covered nodes: ${nodes.filter { !it.isCovered }.size}")
         val values = quantSolver.solve(analysisTask)
         return values[initNode]!!
+    }
+
+    inner class TrappedPARG(
+        val init: Node,
+        val reachedSet: Collection<Node>
+    ) : ImplicitStochasticGame<Node, PARGAction>() {
+        override val initialNode: Node
+            get() = init
+
+        override fun getAvailableActions(node: Node) =
+            if (node.isCovered) listOf(CoverAction()) else node.getOutgoingEdges().filter {
+                it.surelyEnabled
+            }.map(::EdgeAction)
+
+        override fun getResult(node: Node, action: PARGAction) =
+            if (action is EdgeAction) action.e.target.transform { it.second }
+            else dirac(node.coveringNode!!)
+
+        override fun getPlayer(node: Node): Int = 0 // This is an MDP
+
+        override fun getAllNodes(): Collection<Node> {
+            return reachedSet
+        }
+    }
+
+    private fun computeErrorProbWithRefinement(
+        initNode: Node,
+        reachedSet: Collection<Node>,
+        useBVI: Boolean,
+        innerThreshold: Double,
+        outerThreshold: Double
+    ): Double {
+        while(true) {
+            val parg = PARG(initNode, reachedSet)
+            val trappedParg = TrappedPARG(initNode, reachedSet)
+            val rewardFunction = TargetRewardFunction<Node, PARGAction> { it.isErrorNode && !it.isCovered }
+            val quantSolver =
+                if (useBVI) MDPBVISolver(innerThreshold, rewardFunction)
+                else VISolver(innerThreshold, rewardFunction, useGS = false)
+            val upperAnalysisTask = AnalysisTask(parg, { goal })
+            val lowerAnalysisTask = AnalysisTask(trappedParg, { goal })
+            val nodes = parg.getAllNodes()
+            val uppervalues = quantSolver.solve(upperAnalysisTask)
+            val lowerValues = quantSolver.solve(lowerAnalysisTask)
+
+            println("Init node val: [${lowerValues[initNode]}, ${uppervalues[initNode]}] ")
+
+            if(uppervalues[initNode]!! - lowerValues[initNode]!! < outerThreshold)
+                return (uppervalues[initNode]!! + lowerValues[initNode]!!)/2
+
+
+            refineMenuGame(reachedSet, lowerValues, uppervalues)
+        }
+    }
+
+    fun refineMenuGame(
+        reachedSet: Collection<Node>,
+        lowerValues: Map<Node, Double>,
+        upperValues: Map<Node, Double>,
+    ) {
+        val maxDiffNode = reachedSet.filter { it.getOutgoingEdges().any {!it.surelyEnabled} }.maxByOrNull {
+            upperValues[it]!! - lowerValues[it]!!
+        }!!
+        println("Refined node: ${maxDiffNode.id}")
+        for (outgoingEdge in maxDiffNode.getOutgoingEdges()) {
+            if(!outgoingEdge.surelyEnabled) {
+                maxDiffNode.strengthenAgainstCommand(outgoingEdge.relatedCommand, negate = true)
+                outgoingEdge.makeSurelyEnabled()
+            }
+        }
     }
 
 }

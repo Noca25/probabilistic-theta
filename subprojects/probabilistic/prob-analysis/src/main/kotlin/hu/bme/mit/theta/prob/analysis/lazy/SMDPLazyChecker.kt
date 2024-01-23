@@ -2,8 +2,6 @@ package hu.bme.mit.theta.prob.analysis.lazy
 
 import hu.bme.mit.theta.analysis.Trace
 import hu.bme.mit.theta.analysis.expl.*
-import hu.bme.mit.theta.analysis.expr.ExprAction
-import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceSeqItpChecker
 import hu.bme.mit.theta.analysis.pred.*
 import hu.bme.mit.theta.common.container.Containers
@@ -42,6 +40,7 @@ class SMDPLazyChecker(
     enum class BRTDPStrategy {
         MAX_DIFF, RANDOM, ROUND_ROBIN,
         WEIGHTED_MAX, WEIGHTED_RANDOM,
+        DIFF_BASED
     }
 
     enum class Algorithm {
@@ -55,7 +54,8 @@ class SMDPLazyChecker(
         useMay: Boolean = true,
         useMust: Boolean = false,
         threshold: Double = 1e-7,
-        useSeq: Boolean = false
+        useSeq: Boolean = false,
+        useGameRefinement: Boolean = false
     ): Double {
 
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
@@ -112,7 +112,8 @@ class SMDPLazyChecker(
             useMust,
             verboseLogging,
             blockSeq = ExplDomain::blockSeq,
-            useSeq = useSeq
+            useSeq = useSeq,
+            useGameRefinement = useGameRefinement
         )
         val successorSelection = when (brtdpStrategy) {
             BRTDPStrategy.MAX_DIFF -> checker::maxDiffSelection
@@ -120,6 +121,7 @@ class SMDPLazyChecker(
             BRTDPStrategy.WEIGHTED_MAX -> checker::weightedMaxSelection
             BRTDPStrategy.WEIGHTED_RANDOM -> checker::weightedRandomSelection
             BRTDPStrategy.ROUND_ROBIN -> checker::roundRobinSelection
+            BRTDPStrategy.DIFF_BASED -> checker::diffBasedSelection
         }
 
         val subResult = when (algorithm) {
@@ -138,7 +140,8 @@ class SMDPLazyChecker(
         useMay: Boolean = true,
         useMust: Boolean = false,
         threshold: Double = 1e-7,
-        useSeq: Boolean = false
+        useSeq: Boolean = false,
+        useGameRefinement: Boolean = false
     ): Double {
 
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
@@ -200,7 +203,8 @@ class SMDPLazyChecker(
             smdpReachabilityTask.goal,
             useMay, useMust, verboseLogging,
             blockSeq = PredDomain::blockSeq,
-            useSeq = useSeq
+            useSeq = useSeq,
+            useGameRefinement = useGameRefinement
         )
 
         val successorSelection = when (brtdpStrategy) {
@@ -209,6 +213,7 @@ class SMDPLazyChecker(
             BRTDPStrategy.WEIGHTED_MAX -> checker::weightedMaxSelection
             BRTDPStrategy.WEIGHTED_RANDOM -> checker::weightedRandomSelection
             BRTDPStrategy.ROUND_ROBIN -> checker::roundRobinSelection
+            BRTDPStrategy.DIFF_BASED -> checker::diffBasedSelection
         }
 
         val subResult = when (algorithm) {

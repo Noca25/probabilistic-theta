@@ -16,6 +16,7 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
 import java.util.Objects
 import java.util.Stack
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -264,8 +265,11 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     fun randomSelection(
         currNode: Node,
         U: Map<Node, Double>, L: Map<Node, Double>,
-        goal: Goal
-    ): Node {
+        goal: Goal,
+        merged: Map<Node, Pair<Set<Node>, List<Edge>>>
+    ): Node
+    {
+        // TODO: force exiting end components
         // first we select the best action according to U if maxing/L if mining so that the policy is optimistic
         // O for optimistic
         val O = if (goal == Goal.MAX) U else L
@@ -280,10 +284,48 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         return result.second
     }
 
+    fun diffBasedSelection(
+    currNode: Node,
+    U: Map<Node, Double>, L: Map<Node, Double>,
+    goal: Goal,
+    merged: Map<Node, Pair<Set<Node>, List<Edge>>>
+    ): Node {
+        val O = if (goal == Goal.MAX) U else L
+        val actionVals = currNode.getOutgoingEdges().associateWith {
+            it.target.expectedValue { O.getValue(it.second) }
+        }
+        val bestValue = goal.select(actionVals.values)
+        val bests = actionVals.filterValues { it == bestValue }.map { it.key }
+        val best = bests[random.nextInt(bests.size)]
+        val nextNodes = best.targetList
+        var sum = 0.0
+        val pmf = nextNodes.associateWith {
+            val d = U[it.second]!! - L[it.second]!!
+            sum += d
+            d
+        }.toMutableMap()
+
+        if(sum == 0.0) {
+            // If every successor has already converged, we chose uniformly
+            // (should actually stop the simulation, but that is the responsibility of the BRTDP loop)
+            return nextNodes.random(random).second
+        }
+        else {
+            for (nextNode in nextNodes) {
+                pmf[nextNode] = pmf[nextNode]!! / sum
+            }
+            val result = FiniteDistribution(pmf).sample(random)
+            return result.second
+        }
+    }
+
+    // TODO: This strategy won't work (and weighted diff won't, either), we need randomization
+    // we could also try to always exit the the SCCs of the deterministic relaxation to break cyclic dependence
     fun maxDiffSelection(
         currNode: Node,
         U: Map<Node, Double>, L: Map<Node, Double>,
-        goal: Goal
+        goal: Goal,
+        merged: Map<Node, Pair<Set<Node>, List<Edge>>>
     ): Node {
         val O = if (goal == Goal.MAX) U else L
         val actionVals = currNode.getOutgoingEdges().associateWith {
@@ -297,7 +339,9 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             U.getValue(it.second) - L.getValue(it.second)
         }
         val filtered = nextNodes.filter {
-            U.getValue(it.second) - L.getValue(it.second) == maxDiff
+            val diff = U.getValue(it.second) - L.getValue(it.second)
+            if(diff != maxDiff) println("$diff vs $maxDiff")
+            diff == maxDiff
         }
         val result = filtered[random.nextInt(filtered.size)]
         return result.second
@@ -306,8 +350,10 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     fun weightedMaxSelection(
         currNode: Node,
         U: Map<Node, Double>, L: Map<Node, Double>,
-        goal: Goal
+        goal: Goal,
+        merged: Map<Node, Pair<Set<Node>, List<Edge>>>
     ): Node {
+        // TODO: force exiting end components
         val O = if (goal == Goal.MAX) U else L
         val actionVals = currNode.getOutgoingEdges().associateWith {
             it.target.expectedValue { O.getValue(it.second) }
@@ -328,8 +374,10 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     fun weightedRandomSelection(
         currNode: Node,
         U: Map<Node, Double>, L: Map<Node, Double>,
-        goal: Goal
+        goal: Goal,
+        merged: Map<Node, Pair<Set<Node>, List<Edge>>>
     ): Node {
+        // TODO: force exiting end components
         val O = if (goal == Goal.MAX) U else L
         val actionVals = currNode.getOutgoingEdges().associateWith {
             it.target.expectedValue { O.getValue(it.second) }
@@ -343,7 +391,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         }
         val sum = weights.sumOf { it.second }
         if(sum == 0.0) {
-            return actionResult.support.toList()[random.nextInt(actionResult.support.size)].second
+            return actionResult.support.random(random).second
         }
         val pmf = weights.associate { it.first to it.second / sum }
         val result = FiniteDistribution(pmf).sample(random)
@@ -353,8 +401,10 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     fun roundRobinSelection(
         currNode: Node,
         U: Map<Node, Double>, L: Map<Node, Double>,
-        goal: Goal
+        goal: Goal,
+        merged: Map<Node, Pair<Set<Node>, List<Edge>>>
     ): Node {
+        // TODO: force exiting end components
         val O = if (goal == Goal.MAX) U else L
         val actionVals = currNode.getOutgoingEdges().associateWith {
             it.target.expectedValue { O.getValue(it.second) }
@@ -419,7 +469,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             (
             currNode: Node,
             U: Map<Node, Double>, L: Map<Node, Double>,
-            goal: Goal
+            goal: Goal,
+            merged: Map<Node, Pair<Set<Node>, List<Edge>>>
         ) -> Node,
         threshold: Double = 1e-7
     ): Double {
@@ -468,7 +519,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
             // simulate a single trace
             val trace = arrayListOf(initNode)
-            newCovered = arrayListOf<Node>()
+            newCovered.clear()
 
             // TODO: probability-based bound for trace length (see learning algorithms paper)
             while (
@@ -522,7 +573,13 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                     }
                 }
 
-                val nextNode = successorSelection(lastNode, U, L, goal)
+                // stop if a non-exitable MEC is reached
+                if(merged[lastNode]!!.second.isEmpty())
+                    break
+
+                val nextNode = successorSelection(lastNode, U, L, goal, merged)
+
+
                 trace.add(nextNode)
                 // this would lead to infinite traces in MECs, but the trace length bound will stop the loop
                 if (nextNode.isCovered)
@@ -560,7 +617,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             val Unew = HashMap(U)
             val Lnew = HashMap(L)
             // value propagation using the merged map
-            for (node in trace.reversed()) {
+            for (node in trace.reversed().distinct()) {
                 if (node.isCovered) {
                     Unew[node] = U.getValue(node.coveringNode!!)
                     Lnew[node] = L.getValue(node.coveringNode!!)

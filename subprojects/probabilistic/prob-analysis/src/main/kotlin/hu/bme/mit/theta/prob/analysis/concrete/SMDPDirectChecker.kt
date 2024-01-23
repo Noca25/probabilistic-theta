@@ -13,6 +13,7 @@ import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.lazy.ProbLazyChecker
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBVISolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
@@ -70,6 +71,7 @@ class SMDPDirectChecker(
             MAX_DIFF -> this::maxDiffSelection
             RANDOM -> this::randomSelection
             ROUND_ROBIN -> TODO()
+            DIFF_BASED -> TODO()
             WEIGHTED_MAX -> this::weightedMaxSelection
             WEIGHTED_RANDOM -> this::weightedRandomSelection
         }
@@ -447,6 +449,40 @@ class SMDPDirectChecker(
         val result = filtered[random.nextInt(filtered.size)]
         return result
     }
+
+    fun diffBasedSelection(
+        currNode: Node,
+        U: Map<Node, Double>, L: Map<Node, Double>,
+        goal: Goal
+    ): Node {
+        val O = if (goal == Goal.MAX) U else L
+        val actionVals = currNode.getOutgoingEdges().associateWith {
+            it.expectedValue { O.getValue(it) }
+        }
+        val bestValue = goal.select(actionVals.values)
+        val bests = actionVals.filterValues { it == bestValue }.map { it.key }
+        val best = bests[random.nextInt(bests.size)]
+        val nextNodes = best.support
+        var sum = 0.0
+        val pmf = nextNodes.associateWith {
+            val d = U[it]!! - L[it]!!
+            sum += d
+            d
+        }.toMutableMap()
+        if(sum == 0.0) {
+            // If every successor has already converged, we chose uniformly
+            // (should actually stop the simulation, but that is the responsibility of the BRTDP loop)
+            return nextNodes.random(random)
+        }
+        else {
+            for (nextNode in nextNodes) {
+                pmf[nextNode] = pmf[nextNode]!! / sum
+            }
+            val result = FiniteDistribution(pmf).sample(random)
+            return result
+        }
+    }
+
 
     fun weightedMaxSelection(
         currNode: Node,

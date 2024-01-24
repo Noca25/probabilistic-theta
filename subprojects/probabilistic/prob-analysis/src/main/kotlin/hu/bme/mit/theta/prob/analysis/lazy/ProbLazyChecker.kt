@@ -859,7 +859,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
     private fun computeErrorProbWithRefinement(
         initNode: Node,
-        reachedSet: Collection<Node>,
+        reachedSet: MutableList<Node>,
         useBVI: Boolean,
         innerThreshold: Double,
         outerThreshold: Double
@@ -888,7 +888,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     }
 
     fun refineMenuGame(
-        reachedSet: Collection<Node>,
+        reachedSet: MutableList<Node>,
         lowerValues: Map<Node, Double>,
         upperValues: Map<Node, Double>,
     ) {
@@ -900,6 +900,21 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             if(!outgoingEdge.surelyEnabled) {
                 maxDiffNode.strengthenAgainstCommand(outgoingEdge.relatedCommand, negate = true)
                 outgoingEdge.makeSurelyEnabled()
+            }
+        }
+        while (!waitlist.isEmpty()) {
+            val n = waitlist.removeFirst()
+            val newNodes = expand(
+                n,
+                getStdCommands(n.sc),
+                getErrorCommands(n.sc),
+            )
+            for (newNode in newNodes) {
+                close(newNode, reachedSet)
+                if (!newNode.isCovered) {
+                    waitlist.addFirst(newNode)
+                }
+                reachedSet.add(newNode)
             }
         }
     }

@@ -38,10 +38,10 @@ class JaniLazyTest {
                     println("${property.name}: $directResult")
                     break
                 } else {
-                    val result = SMDPLazyChecker(solver, itpSolver, SMDPLazyChecker.Algorithm.BVI, true)
+                    val result = SMDPLazyChecker(solver, itpSolver, SMDPLazyChecker.Algorithm.BRTDP, true)
                         .checkExpl(model,
                                 task,
-                                SMDPLazyChecker.BRTDPStrategy.WEIGHTED_RANDOM,
+                                SMDPLazyChecker.BRTDPStrategy.RANDOM,
                                 useMay = true,
                                 useMust = false,
                                 useSeq = false,

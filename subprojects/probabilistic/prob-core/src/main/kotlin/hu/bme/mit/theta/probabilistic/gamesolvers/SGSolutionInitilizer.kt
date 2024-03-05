@@ -4,6 +4,7 @@ import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.probabilistic.StochasticGame
 
 interface SGSolutionInitilizer<N, A> {
-    fun getInitialValue(n: N, goal: (Int) -> Goal): Double
-    fun computeAllInitialValues(game: StochasticGame<N, A>, goal: (Int) -> Goal): Map<N, Double>
+    fun initialLowerBound(n: N): Double
+    fun initialUpperBound(n: N): Double
+    fun isKnown(n: N): Boolean
 }

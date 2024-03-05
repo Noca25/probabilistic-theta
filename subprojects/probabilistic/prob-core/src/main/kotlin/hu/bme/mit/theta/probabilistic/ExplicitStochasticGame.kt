@@ -5,6 +5,7 @@ import hu.bme.mit.theta.common.visualization.Graph
 import hu.bme.mit.theta.common.visualization.NodeAttributes
 import hu.bme.mit.theta.common.visualization.Shape
 import java.awt.Color
+import java.util.IdentityHashMap
 
 class ExplicitStochasticGame private constructor(
     preNodes: List<Builder.Node>,
@@ -23,6 +24,7 @@ class ExplicitStochasticGame private constructor(
         val player: Int, val name: String
     ) {
         val outgoingEdges get() = this@ExplicitStochasticGame.outgoingEdges[this]!!
+        val predecessors get() = this@ExplicitStochasticGame.predecessors[this]!!
     }
 
     private val nodes: Collection<Node>
@@ -52,7 +54,21 @@ class ExplicitStochasticGame private constructor(
 
     private val outgoingEdges: Map<Node, Collection<Edge>>
     init {
-        outgoingEdges = edges.groupBy { it.start }
+        outgoingEdges = edges.groupBy {
+            it.start
+        }
+    }
+    val predecessors: Map<Node, Set<Node>>
+    init {
+        val preds = hashMapOf<Node, HashSet<Node>>()
+        for ((start, edges) in outgoingEdges) {
+            for (end in edges) {
+                for (node in end.end.support) {
+                    preds.computeIfAbsent(node) { hashSetOf() }.add(start)
+                }
+            }
+        }
+        predecessors = preds
     }
 
     override fun getPlayer(node: Node): Int = node.player
@@ -65,7 +81,7 @@ class ExplicitStochasticGame private constructor(
     override fun getAvailableActions(node: Node): Collection<Edge> =
         outgoingEdges[node] ?: listOf()
 
-    override fun materialize() = this
+    override fun materialize() = this to this.nodes.associateWith { it } //TODO identity function instead of a map?
 
     override fun getAllNodes() = nodes
 

@@ -2,15 +2,17 @@ package hu.bme.mit.theta.probabilistic.gamesolvers
 
 import hu.bme.mit.theta.probabilistic.*
 import java.util.Objects
+import kotlin.math.max
+import kotlin.math.min
 
 /**
- * Bounded Value Iteration solver for "stochastic games" with a single goal, which are actually MDPs.
- * Uses MEC merging to make the upper bound converge, which does not work for real SGs.
+ * Bounded Value Iteration solver for "stochastic games" with a single goal, which can be considered MDPs.
+ * Uses MEC merging to make the upper bound converge, which does not work for general SGs.
  */
 class MDPBVISolver<N, A>(
     val tolerance: Double,
     val rewardFunction: GameRewardFunction<N, A>,
-    val upperInit: Double = 1.0
+    val initilizer: SGSolutionInitilizer<N, A>
 ) : StochasticGameSolver<N, A> {
 
     companion object {
@@ -49,18 +51,9 @@ class MDPBVISolver<N, A>(
         override fun getEdgeReward(source: MergedNode, action: MergedEdge, target: MergedNode): Double {
             return action.reward[target] ?: 0.0
         }
-
-        override fun getLowerInitialValue(n: MergedNode): Double {
-            TODO("Not yet implemented")
-        }
-
-        override fun getUpperInitialValue(n: MergedNode): Double {
-            TODO("Not yet implemented")
-        }
-
     }
 
-    override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
+    fun solveWithRange(analysisTask: AnalysisTask<N, A>): RangeSolution<N> {
         require(analysisTask.discountFactor == 1.0) {
             "Discount not supported for BVI (yet?)"
         }
@@ -101,7 +94,7 @@ class MDPBVISolver<N, A>(
                     if(res.support.any { it !in node.origNodes }) {
                         val reward = hashMapOf<MergedNode, Double>()
                         for (n in res.support) {
-                            // TODO: deal with overwriting
+                            // TODO: deal with overwriting and non-zero rewards in multiple-state ECs (at least throw an exception)
                             if(n !in node.origNodes) {
                                 reward[mergedGameMap[n]!!] = rewardFunction(origNode, action, n)
                             }
@@ -118,16 +111,25 @@ class MDPBVISolver<N, A>(
         val mergedGame = MergedGame(mergedInit, mergedGameNodes)
         val mergedRewardFunction = MergedRewardFunction()
 
-        var lCurr = mergedGameNodes.associateWith { it.reward }
+        var lCurr = mergedGameNodes.associateWith {
+            max(it.reward, it.origNodes.maxOf { initilizer.initialLowerBound(it) })
+        }
         var uCurr = mergedGameNodes.associateWith {
-            if(it.edges.isEmpty()) it.reward
-            else upperInit
+            if(it.edges.isEmpty()) min(it.reward, it.origNodes.maxOf { initilizer.initialUpperBound(it) })
+            else it.origNodes.maxOf { initilizer.initialUpperBound(it) }
         }
         do {
             lCurr = bellmanStep(mergedGame, lCurr, {initGoal}, mergedRewardFunction).result
             uCurr = bellmanStep(mergedGame, uCurr, {initGoal}, mergedRewardFunction).result
         } while (uCurr[mergedInit]!!-lCurr[mergedInit]!! > tolerance)
 
-       return nodes.associateWith { uCurr[mergedGameMap[it]!!]!! }
+        return RangeSolution(
+            nodes.associateWith { lCurr[mergedGameMap[it]!!]!! },
+            nodes.associateWith { uCurr[mergedGameMap[it]!!]!! }
+        )
+    }
+
+    override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
+        return solveWithRange(analysisTask).lower
     }
 }

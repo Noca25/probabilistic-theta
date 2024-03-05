@@ -1,9 +1,6 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers
 
-import hu.bme.mit.theta.probabilistic.GameRewardFunction
-import hu.bme.mit.theta.probabilistic.Goal
-import hu.bme.mit.theta.probabilistic.StochasticGame
-import hu.bme.mit.theta.probabilistic.equals
+import hu.bme.mit.theta.probabilistic.*
 import kotlin.collections.List
 import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
@@ -325,6 +322,195 @@ fun computeSCCs(
 
     return SCCs
 }
+
+/**
+ * Computes the set of nodes from which the target set of nodes can be reached almost surely with an appropriate strategy.
+ * The input stochastic game must be a finite MPD: all nodes must belong to the same player and mdp.getAllNodes must
+ * terminate in finite time. Implementation based on Principles of Model Checking Algorithm 45.
+ */
+fun <N, A> almostSureMaxForMDP(
+    mdp: StochasticGame<N, A>,
+    targets: List<N>
+): List<N> {
+    val nodes = mdp.getAllNodes().toList()
+    val nodeToIdMap = nodes.withIndex().associate { it.value to it.index }
+    val actionResults = nodes.map { n ->
+        mdp.getAvailableActions(n).map { a ->
+            mdp.getResult(n, a).support.map { nodeToIdMap.getValue(it) }
+        }
+    }
+    val almostSureIds = almostSureMaxForMDP(
+        nodes.size, actionResults, targets.map(nodeToIdMap::getValue)
+    )
+    val result = almostSureIds.map { nodes[it] }
+    return result
+}
+
+fun almostSureMaxForMDP(
+    numNodes: Int,
+    actionResults: List<List<List<Int>>>,
+    targets: List<Int>
+): Collection<Int> {
+    // implementation based on Principles of Model Checking Algorithm 45.
+    require(actionResults.size == numNodes)
+
+    val remainingNodes = (0 until numNodes).toMutableList()
+    val modifiedActionResults = actionResults.map { it.toMutableList() }.toMutableList()
+
+    var pre = (0 until numNodes).map { arrayListOf<Pair<Int, Int>>() }
+    for ((node, actions: List<List<Int>>) in modifiedActionResults.withIndex()) {
+        for((action, results: List<Int>) in actions.withIndex()) {
+            for (result in results) {
+                pre[result].add(Pair(node, action))
+            }
+        }
+    }
+
+    var U: MutableList<Int> = arrayListOf()
+    U.addAll(remainingNodes)
+    U.removeAll(targets)
+    var lastRemoved = targets
+    do {
+        lastRemoved = lastRemoved.flatMap { pre[it].map { it.first } }
+    } while (U.removeAll(lastRemoved))
+
+    do {
+        val R = ArrayList(U)
+        while (R.isNotEmpty()) {
+            val u = R.removeLast()
+            for ((t, alpha) in pre[u]) {
+                if(t in U) continue
+                for (i in modifiedActionResults[t][alpha]) {
+                    pre[i].remove(Pair(t, alpha))
+                }
+                modifiedActionResults[t][alpha] = emptyList()
+                if(modifiedActionResults.any { it.isNotEmpty() }) {
+                    R.add(t)
+                    U.add(t)
+                }
+            }
+            // all incoming edges of u have been removed
+            remainingNodes.remove(u)
+            modifiedActionResults[u].clear()
+        }
+
+        pre = (0 until numNodes).map { arrayListOf() }
+        for ((node, actions: List<List<Int>>) in modifiedActionResults.withIndex()) {
+            for((action, results: List<Int>) in actions.withIndex()) {
+                for (result in results) {
+                    pre[result].add(Pair(node, action))
+                }
+            }
+        }
+
+        // determine the states s that cannot reach B in the modified MDP
+        U = remainingNodes.minus(U).toMutableList()
+        U.removeAll(targets)
+        lastRemoved = targets
+        do {
+            lastRemoved = lastRemoved.flatMap { pre[it].map { it.first } }
+        } while (U.removeAll(lastRemoved))
+    } while (U.isNotEmpty())
+
+    return remainingNodes
+}
+
+/**
+ * Computes the set of nodes from which the target set of nodes can be reached almost surely with an appropriate strategy.
+ * The input stochastic game must be a finite MPD: all nodes must belong to the same player and mdp.getAllNodes must
+ * terminate in finite time. Implementation based on Principles of Model Checking Algorithm 45.
+ */
+fun <N, A> almostSureMinForMDP(
+    mdp: StochasticGame<N, A>,
+    targets: List<N>
+): List<N> {
+    val nodes = mdp.getAllNodes().toList()
+    val nodeToIdMap = nodes.withIndex().associate { it.value to it.index }
+    val actionResults = nodes.map { n ->
+        mdp.getAvailableActions(n).map { a ->
+            mdp.getResult(n, a).support.map { nodeToIdMap.getValue(it) }
+        }
+    }
+    val almostSureIds = almostSureMinForMDP(
+        nodes.size, actionResults, targets.map(nodeToIdMap::getValue)
+    )
+    val result = almostSureIds.map { nodes[it] }
+    return result
+}
+
+fun almostSureMinForMDP(
+    numNodes: Int,
+    actionResults: List<List<List<Int>>>,
+    targets: List<Int>
+): Collection<Int> {
+    // Based on Principles of Model Checking Lemma 10.111
+    require(actionResults.size == numNodes)
+
+    val modifiedActionResults = actionResults.map { it.toMutableList() }.toMutableList()
+
+    var pre = (0 until numNodes).map { arrayListOf<Pair<Int, Int>>() }
+    for ((node, actions: List<List<Int>>) in modifiedActionResults.withIndex()) {
+        for((action, results: List<Int>) in actions.withIndex()) {
+            for (result in results) {
+                pre[result].add(Pair(node, action))
+            }
+        }
+    }
+
+    val S = (0 until numNodes)
+
+    // Computing T = {s \in S | P^max(t |= [](!target)) = 1}
+    val T = S.toMutableList()
+
+    fun removeState(s: Int) {
+        T.remove(s)
+        for ((u, beta) in pre[s]) {
+            modifiedActionResults[u][beta] = emptyList()
+            if(modifiedActionResults.all { it.isEmpty() }) {
+                removeState(u)
+            }
+        }
+    }
+
+    targets.forEach(::removeState)
+
+    // results = complement of the set of states that can reach T via a path fragment through (S minus B)"
+    var newlyAdded: List<Int> = T
+    do {
+        newlyAdded = newlyAdded.flatMap { pre[it].map { it.first }.filter { it !in targets && it !in T } }
+        T.addAll(newlyAdded)
+    } while (newlyAdded.isNotEmpty())
+
+    return S.minus(T)
+}
+
+fun <N, A> almostNeverForMDP(
+    mdp: StochasticGame<N, A>,
+    targets: List<N>
+): List<N> {
+    val nodes = mdp.getAllNodes().toList()
+    val nodeToIdMap = nodes.withIndex().associate { it.value to it.index }
+    val actionResults = nodes.map { n ->
+        mdp.getAvailableActions(n).map { a ->
+            mdp.getResult(n, a).support.map { nodeToIdMap.getValue(it) }
+        }
+    }
+    val almostNeverIds = almostNeverForMDP(
+        nodes.size, actionResults, targets.map(nodeToIdMap::getValue)
+    )
+    val result = almostNeverIds.map { nodes[it] }
+    return result
+}
+
+fun almostNeverForMDP(
+    numNodes: Int,
+    actionResults: List<List<List<Int>>>,
+    targets: List<Int>
+): Collection<Int> {
+    // implementation based on Principles of Model Checking Alg 46
+    TODO()
+}
+
 fun tarjan() {
     TODO()
 }

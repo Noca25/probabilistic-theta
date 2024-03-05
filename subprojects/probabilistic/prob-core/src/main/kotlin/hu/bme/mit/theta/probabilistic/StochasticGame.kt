@@ -10,34 +10,37 @@ interface StochasticGame<N, A> {
 
     fun getAllNodes(): Collection<N>
 
-    fun materialize() = ExplicitStochasticGame.Builder().apply {
-        val q = ArrayDeque<N>()
-        q.add(initialNode)
-
+    fun materialize(): Pair<ExplicitStochasticGame, Map<N, ExplicitStochasticGame.Node>> {
         val nodeMapping = hashMapOf<N, ExplicitStochasticGame.Builder.Node>()
 
-        while (!q.isEmpty()) {
-            val curr = q.pop()
-            val materNode = nodeMapping.getOrElse(curr) {
-                val newNode = addNode(curr.toString(), getPlayer(curr))
-                nodeMapping[curr] = newNode
-                newNode
-            }
-            val acts = getAvailableActions(curr)
-            for (act in acts) {
-                val result = getResult(curr, act)
-                for (n in result.support) {
-                    if(!nodeMapping.containsKey(n)) {
-                        nodeMapping[n] = addNode(n.toString(), getPlayer(n))
-                        q.add(n)
-                    }
+        val (resultGame, builderMapping) = ExplicitStochasticGame.Builder().apply {
+            val q = ArrayDeque<N>()
+            q.add(initialNode)
+
+            while (!q.isEmpty()) {
+                val curr = q.pop()
+                val materNode = nodeMapping.getOrElse(curr) {
+                    val newNode = addNode(curr.toString(), getPlayer(curr))
+                    nodeMapping[curr] = newNode
+                    newNode
                 }
-                val materResult = result.transform { nodeMapping[it]!! }
-                addEdge(materNode, materResult, act.toString())
+                val acts = getAvailableActions(curr)
+                for (act in acts) {
+                    val result = getResult(curr, act)
+                    for (n in result.support) {
+                        if (!nodeMapping.containsKey(n)) {
+                            nodeMapping[n] = addNode(n.toString(), getPlayer(n))
+                            q.add(n)
+                        }
+                    }
+                    val materResult = result.transform { nodeMapping[it]!! }
+                    addEdge(materNode, materResult, act.toString())
+                }
             }
-        }
-        setInitNode(nodeMapping[this@StochasticGame.initialNode]!!)
-    }.build().game
+            setInitNode(nodeMapping[this@StochasticGame.initialNode]!!)
+        }.build()
+        return resultGame to nodeMapping.mapValues { builderMapping[it.value]!! }
+    }
 }
 
 fun <N, A> StochasticGame<N, A>.changePlayers(map: (Int) -> Int) = object: StochasticGame<N, A> {

@@ -38,9 +38,8 @@ class SMDPLazyChecker(
 ) {
 
     enum class BRTDPStrategy {
-        MAX_DIFF, RANDOM, ROUND_ROBIN,
-        WEIGHTED_MAX, WEIGHTED_RANDOM,
-        DIFF_BASED
+        DIFF_BASED, RANDOM, ROUND_ROBIN, WEIGHTED_RANDOM,
+
     }
 
     enum class Algorithm {
@@ -50,7 +49,7 @@ class SMDPLazyChecker(
     fun checkExpl(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask,
-        brtdpStrategy: BRTDPStrategy = BRTDPStrategy.MAX_DIFF,
+        brtdpStrategy: BRTDPStrategy = BRTDPStrategy.DIFF_BASED,
         useMay: Boolean = true,
         useMust: Boolean = false,
         threshold: Double = 1e-7,
@@ -116,9 +115,7 @@ class SMDPLazyChecker(
             useGameRefinement = useGameRefinement
         )
         val successorSelection = when (brtdpStrategy) {
-            BRTDPStrategy.MAX_DIFF -> checker::maxDiffSelection
             BRTDPStrategy.RANDOM -> checker::randomSelection
-            BRTDPStrategy.WEIGHTED_MAX -> checker::weightedMaxSelection
             BRTDPStrategy.WEIGHTED_RANDOM -> checker::weightedRandomSelection
             BRTDPStrategy.ROUND_ROBIN -> checker::roundRobinSelection
             BRTDPStrategy.DIFF_BASED -> checker::diffBasedSelection
@@ -136,7 +133,7 @@ class SMDPLazyChecker(
     fun checkPred(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask,
-        brtdpStrategy: BRTDPStrategy = BRTDPStrategy.MAX_DIFF,
+        brtdpStrategy: BRTDPStrategy = BRTDPStrategy.DIFF_BASED,
         useMay: Boolean = true,
         useMust: Boolean = false,
         threshold: Double = 1e-7,
@@ -208,9 +205,7 @@ class SMDPLazyChecker(
         )
 
         val successorSelection = when (brtdpStrategy) {
-            BRTDPStrategy.MAX_DIFF -> checker::maxDiffSelection
             BRTDPStrategy.RANDOM -> checker::randomSelection
-            BRTDPStrategy.WEIGHTED_MAX -> checker::weightedMaxSelection
             BRTDPStrategy.WEIGHTED_RANDOM -> checker::weightedRandomSelection
             BRTDPStrategy.ROUND_ROBIN -> checker::roundRobinSelection
             BRTDPStrategy.DIFF_BASED -> checker::diffBasedSelection
@@ -284,8 +279,7 @@ class SMDPLazyChecker(
         ): List<SMDPState<ExplState>> {
             val seqItpChecker = ExprTraceSeqItpChecker.create(nodes.first().sc.toExpr(), toBlockAtLast, itpSolver)
             val states = nodes.map { it.sa }
-            val actions = guards.zip(actions).map {
-                (g: Expr<BoolType>, a: SMDPCommandAction) ->
+            val actions = guards.zip(actions).map { (g: Expr<BoolType>, a: SMDPCommandAction) ->
                 BasicStmtAction(listOf(Assume(g)) + a.stmts)
             }
             val trace = Trace.of(states, actions)
@@ -375,7 +369,7 @@ class SMDPLazyChecker(
                 "Block failed: Concrete state $concrState does not contradict $expr"
             }
 
-            val newAbstract = if(useItp) {
+            val newAbstract = if (useItp) {
                 lateinit var itp: Expr<BoolType>
                 WithPushPop(itpSolver).use {
                     val A = itpSolver.createMarker()
@@ -400,7 +394,7 @@ class SMDPLazyChecker(
                 PredState.of(newConjuncts)
             } else {
                 val newPred = ExprUtils.canonize(Not(expr))
-                if(abstrState.domainState.preds.contains(newPred)) abstrState.domainState
+                if (abstrState.domainState.preds.contains(newPred)) abstrState.domainState
                 else {
                     val needed = WithPushPop(smtSolver).use {
                         smtSolver.add(PathUtils.unfold(abstrState.domainState.toExpr(), 0))
@@ -424,8 +418,7 @@ class SMDPLazyChecker(
         ): List<SMDPState<PredState>> {
             val seqItpChecker = ExprTraceSeqItpChecker.create(nodes.first().sc.toExpr(), toBlockAtLast, itpSolver)
             val states = nodes.map { it.sa }
-            val actions = guards.zip(actions).map {
-                    (g: Expr<BoolType>, a: SMDPCommandAction) ->
+            val actions = guards.zip(actions).map { (g: Expr<BoolType>, a: SMDPCommandAction) ->
                 BasicStmtAction(listOf(Assume(g)) + a.stmts)
             }
             val trace = Trace.of(states, actions)

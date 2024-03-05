@@ -10,8 +10,9 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitilizer
 class TargetSetLowerInitializer<N, A>(
     val isTarget: (N) -> Boolean
 ): SGSolutionInitilizer<N, A>{
-    override fun computeAllInitialValues(game: StochasticGame<N, A>, goal: (Int) -> Goal): Map<N, Double> =
-        game.getAllNodes().associateWith { if(isTarget(it)) 1.0 else 0.0 }
+    override fun initialLowerBound(n: N): Double = if(isTarget(n)) 1.0 else 0.0
 
-    override fun getInitialValue(n: N, goal: (Int) -> Goal): Double = if(isTarget(n)) 1.0 else 0.0
+    override fun initialUpperBound(n: N) = 1.0
+    override fun isKnown(n: N): Boolean = isTarget(n)
+
 }

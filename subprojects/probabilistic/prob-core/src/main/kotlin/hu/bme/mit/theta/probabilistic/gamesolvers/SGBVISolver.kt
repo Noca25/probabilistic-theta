@@ -2,7 +2,7 @@ package hu.bme.mit.theta.probabilistic.gamesolvers
 
 import hu.bme.mit.theta.probabilistic.*
 
-class BVISolver<N, A>(
+class SGBVISolver<N, A>(
     val threshold: Double,
     val lowerInitializer: SGSolutionInitilizer<N, A>,
     val upperInitilizer: SGSolutionInitilizer<N, A>,
@@ -34,8 +34,8 @@ class BVISolver<N, A>(
         //TODO: if a generic reward func is used, check infinite reward loops before analysis if possible
         // (at least precompute a list of non-zero reward transitions and nodes -> check during deflation)
 
-        val lInit = lowerInitializer.computeAllInitialValues(game, goal)
-        val uInit = upperInitilizer.computeAllInitialValues(game, goal)
+        val lInit = game.getAllNodes().associateWith(lowerInitializer::initialLowerBound)
+        val uInit = game.getAllNodes().associateWith(upperInitilizer::initialUpperBound)
         var lCurr = lInit
         var uCurr = uInit
         do {

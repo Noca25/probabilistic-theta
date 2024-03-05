@@ -17,6 +17,7 @@ import hu.bme.mit.theta.prob.analysis.lazy.ProbLazyChecker
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBVISolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
 import hu.bme.mit.theta.solver.Solver
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -51,7 +52,7 @@ class SMDPDirectChecker(
     fun check(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask,
-        strategy: SMDPLazyChecker.BRTDPStrategy = MAX_DIFF,
+        strategy: SMDPLazyChecker.BRTDPStrategy = DIFF_BASED,
         threshold: Double
     ): Double {
         val initFunc = SmdpInitFunc<ExplState, ExplPrec>(
@@ -68,11 +69,9 @@ class SMDPDirectChecker(
             smdpLts.getCommandsFor(state).map { it.withPrecondition(smdpReachabilityTask.constraint) }
 
         val strat = when(strategy) {
-            MAX_DIFF -> this::maxDiffSelection
             RANDOM -> this::randomSelection
             ROUND_ROBIN -> TODO()
-            DIFF_BASED -> TODO()
-            WEIGHTED_MAX -> this::weightedMaxSelection
+            DIFF_BASED -> this::diffBasedSelection
             WEIGHTED_RANDOM -> this::weightedRandomSelection
         }
 
@@ -293,10 +292,15 @@ class SMDPDirectChecker(
             TargetRewardFunction<Node, FiniteDistribution<Node>> {
                 it.isErrorNode
             }
+        val initializer =
+            TargetSetLowerInitializer<Node, FiniteDistribution<Node>> {
+                it.isErrorNode
+            }
+
 
         val quantSolver =
-            if(useBVI) MDPBVISolver(threshold, rewardFunction)
-            else VISolver(threshold, rewardFunction, useGS = false)
+            if(useBVI) MDPBVISolver(threshold, rewardFunction, initializer)
+            else VISolver(threshold, rewardFunction, useGS = false, initializer)
 
         val analysisTask = AnalysisTask(game, {goal})
         println("All nodes: ${allNodes.size}")
@@ -427,29 +431,6 @@ class SMDPDirectChecker(
         return result
     }
 
-    fun maxDiffSelection(
-        currNode: Node,
-        U: Map<Node, Double>, L: Map<Node, Double>,
-        goal: Goal
-    ): Node {
-        val O = if (goal == Goal.MAX) U else L
-        val actionVals = currNode.getOutgoingEdges().associateWith {
-            it.expectedValue { O.getValue(it) }
-        }
-        val bestValue = goal.select(actionVals.values)
-        val bests = actionVals.filterValues { it == bestValue }.map { it.key }
-        val best = bests[random.nextInt(bests.size)]
-        val nextNodes = best.support
-        val maxDiff = nextNodes.maxOf {
-            U.getValue(it) - L.getValue(it)
-        }
-        val filtered = nextNodes.filter {
-            U.getValue(it) - L.getValue(it) == maxDiff
-        }
-        val result = filtered[random.nextInt(filtered.size)]
-        return result
-    }
-
     fun diffBasedSelection(
         currNode: Node,
         U: Map<Node, Double>, L: Map<Node, Double>,
@@ -481,29 +462,6 @@ class SMDPDirectChecker(
             val result = FiniteDistribution(pmf).sample(random)
             return result
         }
-    }
-
-
-    fun weightedMaxSelection(
-        currNode: Node,
-        U: Map<Node, Double>, L: Map<Node, Double>,
-        goal: Goal
-    ): Node {
-        val O = if (goal == Goal.MAX) U else L
-        val actionVals = currNode.getOutgoingEdges().associateWith {
-            it.expectedValue { O.getValue(it) }
-        }
-        val bestValue = goal.select(actionVals.values)
-        val bests = actionVals.filterValues { it == bestValue }.map { it.key }
-        val best = bests[random.nextInt(bests.size)]
-        val actionResult = best
-        val weights = actionResult.support.map {
-            it to actionResult[it] * (U[it]!!-L[it]!!)
-        }
-        val maxWeight = weights.maxOfOrNull { it.second } ?: 0.0
-        val filtered = weights.filter { it.second == maxWeight }
-        val result = filtered[random.nextInt(filtered.size)]
-        return result.first
     }
 
     fun weightedRandomSelection(

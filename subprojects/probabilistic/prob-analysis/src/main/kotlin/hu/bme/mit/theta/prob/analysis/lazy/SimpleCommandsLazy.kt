@@ -1,6 +1,8 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
+import hu.bme.mit.theta.analysis.TransFunc
 import hu.bme.mit.theta.analysis.expl.*
+import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.analysis.pred.PredOrd
 import hu.bme.mit.theta.analysis.pred.PredState
 import hu.bme.mit.theta.common.container.Containers
@@ -49,45 +51,34 @@ class SimpleCommandsLazy(
         val concreteTransFunc = ExplStmtTransFunc.create(smtSolver, 0)
         val vars = initValuation.decls.filterIsInstance<VarDecl<*>>()
         val fullPrec = ExplPrec.of(vars)
+        val explDomain = ExplDomain(concreteTransFunc, fullPrec)
         val checker = ProbLazyChecker(
             {commands}, {errorCommands},
-            ExplState.of(initValuation), ExplState.top(),
-            ExplDomain::checkContainment,
-            ExplDomain::isLeq,
-            ExplDomain::mayBeEnabled,
-            ExplDomain::mustBeEnabled,
-            ExplDomain::isEnabled,
-            { sc, a ->
-                val res = concreteTransFunc.getSuccStates(sc, a, fullPrec)
-                require(res.size == 1) {"Concrete trans func returned multiple successor states :-("}
-                res.first()
-            },
-            ExplDomain::block,
-            ExplDomain::postImage,
-            ExplDomain::preImage,
-            ExplDomain::topAfter,
-            goal
+            ExplState.of(initValuation), ExplState.top(), explDomain, goal
         )
         return checker.fullyExpanded(false, 1e-7)
     }
 
-    private object ExplDomain {
+    private class ExplDomain(
+        val concreteTransFunc: TransFunc<ExplState, StmtAction, ExplPrec>,
+        val fullPrec: ExplPrec
+    ): LazyDomain<ExplState, ExplState, BasicStmtAction> {
 
-        fun checkContainment(sc: ExplState, sa: ExplState): Boolean = ExplOrd.getInstance().isLeq(sc, sa)
+        override fun checkContainment(sc: ExplState, sa: ExplState): Boolean = ExplOrd.getInstance().isLeq(sc, sa)
 
-        fun isLeq(sa1: ExplState, sa2: ExplState): Boolean = ExplOrd.getInstance().isLeq(sa1, sa2)
+        override fun isLeq(sa1: ExplState, sa2: ExplState): Boolean = ExplOrd.getInstance().isLeq(sa1, sa2)
 
-        fun mayBeEnabled(state: ExplState, command: ProbabilisticCommand<BasicStmtAction>): Boolean {
+        override fun mayBeEnabled(state: ExplState, command: ProbabilisticCommand<BasicStmtAction>): Boolean {
             val simplified = ExprSimplifier.simplify(command.guard, state)
             return simplified != False()
         }
 
-        fun mustBeEnabled(state: ExplState, command: ProbabilisticCommand<BasicStmtAction>): Boolean {
+        override fun mustBeEnabled(state: ExplState, command: ProbabilisticCommand<BasicStmtAction>): Boolean {
             val simplified = ExprSimplifier.simplify(command.guard, state)
             return simplified == True()
         }
 
-        fun block(abstrState: ExplState, expr: Expr<BoolType>, concrState: ExplState): ExplState {
+        override fun block(abstrState: ExplState, expr: Expr<BoolType>, concrState: ExplState): ExplState {
             require(ExplOrd.getInstance().isLeq(concrState, abstrState)) {
                 "Block failed: Concrete state $concrState not contained in abstract state $abstrState!"
             }
@@ -111,36 +102,56 @@ class SimpleCommandsLazy(
             return newAbstractExpl
         }
 
-        fun postImage(state: ExplState, action: BasicStmtAction, guard: Expr<BoolType>): ExplState {
+        override fun postImage(state: ExplState, action: BasicStmtAction, guard: Expr<BoolType>): ExplState {
             val res = MutableValuation.copyOf(state.`val`)
             val stmts = listOf(Stmts.Assume(guard))+action.stmts
             StmtApplier.apply(SequenceStmt(stmts), res, true)
             return ExplState.of(res)
         }
 
-        fun preImage(state: ExplState, action: BasicStmtAction): Expr<BoolType> =
+        override fun preImage(state: ExplState, action: BasicStmtAction): Expr<BoolType> =
             WpState.of(state.toExpr()).wep(SequenceStmt(action.stmts)).expr
 
-        fun topAfter(state: ExplState, action: BasicStmtAction): ExplState = ExplState.top()
+        override fun topAfter(state: ExplState, action: BasicStmtAction): ExplState = ExplState.top()
 
-        fun isEnabled(s: ExplState, probabilisticCommand: ProbabilisticCommand<*>): Boolean {
+        override fun isEnabled(s: ExplState, probabilisticCommand: ProbabilisticCommand<BasicStmtAction>): Boolean {
             return probabilisticCommand.guard.eval(s) == True()
+        }
+
+        override fun concreteTransFunc(sc: ExplState, a: BasicStmtAction): ExplState {
+            val res = concreteTransFunc.getSuccStates(sc, a, fullPrec)
+            require(res.size == 1) {"Concrete trans func returned multiple successor states :-("}
+            return res.first()
+        }
+
+        override fun blockSeq(
+            nodes: List<ProbLazyChecker<ExplState, ExplState, BasicStmtAction>.Node>,
+            guards: List<Expr<BoolType>>,
+            actions: List<BasicStmtAction>,
+            toBlockAtLast: Expr<BoolType>
+        ): List<ExplState> {
+            TODO("Not yet implemented")
         }
 
     }
 
-    private val PredDomain = object {
+    private class PredDomain(
+        val concreteTransFunc: TransFunc<ExplState, StmtAction, ExplPrec>,
+        val fullPrec: ExplPrec,
+        val smtSolver: Solver,
+        val itpSolver: ItpSolver
+    ): LazyDomain<ExplState, PredState, BasicStmtAction> {
 
-        fun checkContainment(sc: ExplState, sa: PredState): Boolean {
+        override fun checkContainment(sc: ExplState, sa: PredState): Boolean {
             val res = sa.toExpr().eval(sc)
             return if(res == True()) true
             else if(res == False()) false
             else throw IllegalArgumentException("concrete state must be a full valuation")
         }
 
-        fun isLeq(sa1: PredState, sa2: PredState): Boolean = PredOrd.create(smtSolver).isLeq(sa1, sa2)
+        override fun isLeq(sa1: PredState, sa2: PredState): Boolean = PredOrd.create(smtSolver).isLeq(sa1, sa2)
 
-        fun mayBeEnabled(state: PredState, command: ProbabilisticCommand<BasicStmtAction>): Boolean {
+        override fun mayBeEnabled(state: PredState, command: ProbabilisticCommand<BasicStmtAction>): Boolean {
             WithPushPop(smtSolver).use {
                 smtSolver.add(PathUtils.unfold(state.toExpr(), 0))
                 smtSolver.add(PathUtils.unfold(command.guard, 0))
@@ -148,7 +159,7 @@ class SimpleCommandsLazy(
             }
         }
 
-        fun mustBeEnabled(state: PredState, command: ProbabilisticCommand<BasicStmtAction>): Boolean {
+        override fun mustBeEnabled(state: PredState, command: ProbabilisticCommand<BasicStmtAction>): Boolean {
             WithPushPop(smtSolver).use {
                 smtSolver.add(PathUtils.unfold(state.toExpr(), 0))
                 smtSolver.add(PathUtils.unfold(BoolExprs.Not(command.guard), 0))
@@ -156,7 +167,7 @@ class SimpleCommandsLazy(
             }
         }
 
-        fun block(abstrState: PredState, expr: Expr<BoolType>, concrState: ExplState): PredState {
+        override fun block(abstrState: PredState, expr: Expr<BoolType>, concrState: ExplState): PredState {
             require(checkContainment(concrState, abstrState)) {
                 "Block failed: Concrete state $concrState not contained in abstract state $abstrState!"
             }
@@ -180,7 +191,7 @@ class SimpleCommandsLazy(
             return newAbstract
         }
 
-        fun postImage(state: PredState, action: BasicStmtAction, guard: Expr<BoolType>): PredState {
+        override fun postImage(state: PredState, action: BasicStmtAction, guard: Expr<BoolType>): PredState {
             TODO("do this somehow")
             val exprs = listOf(
                 state.toExpr(),
@@ -190,13 +201,28 @@ class SimpleCommandsLazy(
             val prevExpr = PathUtils.unfold(state.toExpr(), 0)
         }
 
-        fun preImage(state: PredState, action: BasicStmtAction): Expr<BoolType> =
+        override fun preImage(state: PredState, action: BasicStmtAction): Expr<BoolType> =
             WpState.of(state.toExpr()).wep(SequenceStmt(action.stmts)).expr
 
-        fun topAfter(state: ExplState, action: BasicStmtAction): PredState = PredState.of()
+        override fun topAfter(state: PredState, action: BasicStmtAction): PredState = PredState.of()
 
-        fun isEnabled(s: ExplState, probabilisticCommand: ProbabilisticCommand<*>): Boolean {
+        override fun isEnabled(s: ExplState, probabilisticCommand: ProbabilisticCommand<BasicStmtAction>): Boolean {
             return probabilisticCommand.guard.eval(s) == True()
+        }
+
+        override fun concreteTransFunc(sc: ExplState, a: BasicStmtAction): ExplState {
+            val res = concreteTransFunc.getSuccStates(sc, a, fullPrec)
+            require(res.size == 1) {"Concrete trans func returned multiple successor states :-("}
+            return res.first()
+        }
+
+        override fun blockSeq(
+            nodes: List<ProbLazyChecker<ExplState, PredState, BasicStmtAction>.Node>,
+            guards: List<Expr<BoolType>>,
+            actions: List<BasicStmtAction>,
+            toBlockAtLast: Expr<BoolType>
+        ): List<PredState> {
+            TODO("Not yet implemented")
         }
 
     }

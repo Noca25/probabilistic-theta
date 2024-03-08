@@ -72,7 +72,7 @@ class MenuGameAbstractorTest {
         // checked manually
         // TODO: some more automatic checks
         val viz = GraphvizWriter.getInstance().writeString(
-            sg.materialize().visualize()
+            sg.materialize().first.visualize()
         )
     }
 
@@ -89,7 +89,7 @@ class MenuGameAbstractorTest {
         // checked manually
         // TODO: some more automatic checks
         val viz = GraphvizWriter.getInstance().writeString(
-            sg.materialize().visualize()
+            sg.materialize().first.visualize()
         )
     }
 
@@ -103,7 +103,7 @@ class MenuGameAbstractorTest {
         // checked manually
         // TODO: some more automatic checks
         val viz = GraphvizWriter.getInstance().writeString(
-            sg.materialize().visualize()
+            sg.materialize().first.visualize()
         )
     }
 }

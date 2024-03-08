@@ -1,13 +1,13 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers.initializers
 
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitilizer
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 
 class FallbackInitializer<N, A>(
     val lowerBound: Map<N, Double>,
     val upperBound: Map<N, Double>,
-    val fallback: SGSolutionInitilizer<N,A>,
+    val fallback: SGSolutionInitializer<N,A>,
     val convergenceThreshold: Double
-): SGSolutionInitilizer<N, A> {
+): SGSolutionInitializer<N, A> {
     override fun initialLowerBound(n: N): Double {
         return lowerBound[n] ?: fallback.initialLowerBound(n)
     }

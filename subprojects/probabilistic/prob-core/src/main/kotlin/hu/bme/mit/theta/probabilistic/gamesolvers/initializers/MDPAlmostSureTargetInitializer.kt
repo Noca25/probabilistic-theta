@@ -3,7 +3,7 @@ package hu.bme.mit.theta.probabilistic.gamesolvers.initializers
 import hu.bme.mit.theta.probabilistic.ExplicitStochasticGame
 import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.probabilistic.StochasticGame
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitilizer
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.almostSureMaxForMDP
 import hu.bme.mit.theta.probabilistic.gamesolvers.almostSureMinForMDP
 
@@ -14,7 +14,7 @@ class MDPAlmostSureTargetInitializer<N, A>(
     val mdp: StochasticGame<N, A>,
     val goal: Goal,
     val isTarget: (N) -> Boolean
-) : SGSolutionInitilizer<N, A> {
+) : SGSolutionInitializer<N, A> {
 
     private val sureAvoiding = arrayListOf<N>()
     private val almostSureReaching = arrayListOf<N>()

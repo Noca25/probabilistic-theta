@@ -1,15 +1,13 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers.initializers
 
-import hu.bme.mit.theta.probabilistic.Goal
-import hu.bme.mit.theta.probabilistic.StochasticGame
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitilizer
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 
 /**
  * Provides an initial lower approximation for computing the probability of reaching a set of target states
  */
 class TargetSetLowerInitializer<N, A>(
     val isTarget: (N) -> Boolean
-): SGSolutionInitilizer<N, A>{
+): SGSolutionInitializer<N, A>{
     override fun initialLowerBound(n: N): Double = if(isTarget(n)) 1.0 else 0.0
 
     override fun initialUpperBound(n: N) = 1.0

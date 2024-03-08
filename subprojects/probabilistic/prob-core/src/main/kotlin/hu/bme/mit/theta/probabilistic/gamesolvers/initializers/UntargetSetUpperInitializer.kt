@@ -1,6 +1,6 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers.initializers
 
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitilizer
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 
 /**
  * Provides an initial upper approximation for computing the probability of reaching a set of target states based on
@@ -8,7 +8,7 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitilizer
  */
 class UntargetSetUpperInitializer<N, A>(
     val isUntarget: (N) -> Boolean
-): SGSolutionInitilizer<N, A> {
+): SGSolutionInitializer<N, A> {
     override fun initialLowerBound(n: N): Double = 0.0
 
     override fun initialUpperBound(n: N): Double =

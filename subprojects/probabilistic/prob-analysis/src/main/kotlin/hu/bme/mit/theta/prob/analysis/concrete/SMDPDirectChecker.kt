@@ -13,10 +13,11 @@ import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
-import hu.bme.mit.theta.prob.analysis.lazy.ProbLazyChecker
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBVISolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTargetInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
 import hu.bme.mit.theta.solver.Solver
 import java.util.*
@@ -28,7 +29,10 @@ import kotlin.random.Random
 class SMDPDirectChecker(
     val solver: Solver,
     val algorithm: SMDPLazyChecker.Algorithm,
-    val verboseLogging: Boolean = false
+    val verboseLogging: Boolean = false,
+    val brtpStrategy: SMDPLazyChecker.BRTDPStrategy = DIFF_BASED,
+    val threshold: Double,
+    val useQualitativePreprocessing: Boolean = false
 ) {
 
     data class Node(val state: SMDPState<ExplState>) {
@@ -47,13 +51,20 @@ class SMDPDirectChecker(
         override fun hashCode(): Int {
             return Objects.hashCode(this.id)
         }
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as Node
+
+            return id == other.id
+        }
     }
 
     fun check(
         smdp: SMDP,
-        smdpReachabilityTask: SMDPReachabilityTask,
-        strategy: SMDPLazyChecker.BRTDPStrategy = DIFF_BASED,
-        threshold: Double
+        smdpReachabilityTask: SMDPReachabilityTask
     ): Double {
         val initFunc = SmdpInitFunc<ExplState, ExplPrec>(
             ExplInitFunc.create(solver, smdp.getFullInitExpr()),
@@ -68,7 +79,7 @@ class SMDPDirectChecker(
         fun commandsWithPrecondition(state: SMDPState<ExplState>) =
             smdpLts.getCommandsFor(state).map { it.withPrecondition(smdpReachabilityTask.constraint) }
 
-        val strat = when(strategy) {
+        val strat = when(brtpStrategy) {
             RANDOM -> this::randomSelection
             ROUND_ROBIN -> TODO()
             DIFF_BASED -> this::diffBasedSelection
@@ -234,6 +245,7 @@ class SMDPDirectChecker(
 
         return U[initNode]!!
     }
+
     private fun vi(
         getStdCommands: (SMDPState<ExplState>) -> Collection<ProbabilisticCommand<SMDPCommandAction>>,
         targetExpression: Expr<BoolType>,
@@ -243,6 +255,34 @@ class SMDPDirectChecker(
         fullPrec: ExplPrec,
         useBVI: Boolean = false
         ): Double {
+
+        return fullyExplored(
+            getStdCommands,
+            targetExpression,
+            initState,
+            goal,
+            threshold,
+            fullPrec,
+            if(useBVI) ::MDPBVISolver
+            else { threshold, rewardFunction, initializer ->
+                VISolver(threshold, rewardFunction, useGS = false, initializer)
+            }
+        )
+    }
+
+    private fun fullyExplored(
+        getStdCommands: (SMDPState<ExplState>) -> Collection<ProbabilisticCommand<SMDPCommandAction>>,
+        targetExpression: Expr<BoolType>,
+        initState: SMDPState<ExplState>,
+        goal: Goal,
+        threshold: Double,
+        fullPrec: ExplPrec,
+        solverSupplier:
+            (threshold: Double,
+             rewardFunction: GameRewardFunction<Node, FiniteDistribution<Node>>,
+             initializer: SGSolutionInitializer<Node, FiniteDistribution<Node>>)
+        -> StochasticGameSolver<Node, FiniteDistribution<Node>>
+    ): Double {
         val timer = Stopwatch.createStarted()
 
         val initNode = Node(initState)
@@ -281,10 +321,10 @@ class SMDPDirectChecker(
             override fun getPlayer(node: Node): Int = 0
 
             override fun getResult(node: Node, action: FiniteDistribution<Node>)
-                = action
+                    = action
 
             override fun getAvailableActions(node: Node)
-                = node.getOutgoingEdges()
+                    = node.getOutgoingEdges()
 
         }
 
@@ -293,14 +333,13 @@ class SMDPDirectChecker(
                 it.isErrorNode
             }
         val initializer =
-            TargetSetLowerInitializer<Node, FiniteDistribution<Node>> {
+            if(useQualitativePreprocessing) MDPAlmostSureTargetInitializer(game, goal, Node::isErrorNode)
+            else TargetSetLowerInitializer<Node, FiniteDistribution<Node>> {
                 it.isErrorNode
             }
 
 
-        val quantSolver =
-            if(useBVI) MDPBVISolver(threshold, rewardFunction, initializer)
-            else VISolver(threshold, rewardFunction, useGS = false, initializer)
+        val quantSolver = solverSupplier(threshold, rewardFunction, initializer)
 
         val analysisTask = AnalysisTask(game, {goal})
         println("All nodes: ${allNodes.size}")

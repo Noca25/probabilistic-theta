@@ -1,6 +1,6 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers.initializers
 
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitilizer
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 
 class ExplicitInitializer<N, A>(
     val lowerBound: Map<N, Double>,
@@ -8,7 +8,7 @@ class ExplicitInitializer<N, A>(
     val defaultLower: Double,
     val defaultUpper: Double,
     val convergenceThreshold: Double
-): SGSolutionInitilizer<N, A> {
+): SGSolutionInitializer<N, A> {
     override fun initialLowerBound(n: N): Double =
         lowerBound[n] ?: defaultLower
 

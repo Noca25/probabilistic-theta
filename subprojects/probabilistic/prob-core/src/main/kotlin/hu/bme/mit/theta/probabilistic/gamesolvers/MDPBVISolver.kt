@@ -12,7 +12,7 @@ import kotlin.math.min
 class MDPBVISolver<N, A>(
     val tolerance: Double,
     val rewardFunction: GameRewardFunction<N, A>,
-    val initilizer: SGSolutionInitilizer<N, A>
+    val initializer: SGSolutionInitializer<N, A>
 ) : StochasticGameSolver<N, A> {
 
     companion object {
@@ -112,11 +112,11 @@ class MDPBVISolver<N, A>(
         val mergedRewardFunction = MergedRewardFunction()
 
         var lCurr = mergedGameNodes.associateWith {
-            max(it.reward, it.origNodes.maxOf { initilizer.initialLowerBound(it) })
+            max(it.reward, it.origNodes.maxOf { initializer.initialLowerBound(it) })
         }
         var uCurr = mergedGameNodes.associateWith {
-            if(it.edges.isEmpty()) min(it.reward, it.origNodes.maxOf { initilizer.initialUpperBound(it) })
-            else it.origNodes.maxOf { initilizer.initialUpperBound(it) }
+            if(it.edges.isEmpty()) min(it.reward, it.origNodes.maxOf { initializer.initialUpperBound(it) })
+            else it.origNodes.maxOf { initializer.initialUpperBound(it) }
         }
         do {
             lCurr = bellmanStep(mergedGame, lCurr, {initGoal}, mergedRewardFunction).result

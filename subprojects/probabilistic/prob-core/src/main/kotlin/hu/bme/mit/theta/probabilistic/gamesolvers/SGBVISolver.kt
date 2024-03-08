@@ -4,8 +4,8 @@ import hu.bme.mit.theta.probabilistic.*
 
 class SGBVISolver<N, A>(
     val threshold: Double,
-    val lowerInitializer: SGSolutionInitilizer<N, A>,
-    val upperInitilizer: SGSolutionInitilizer<N, A>,
+    val lowerInitializer: SGSolutionInitializer<N, A>,
+    val upperInitilizer: SGSolutionInitializer<N, A>,
     val useGS: Boolean = false,
     val msecOptimalityThreshold: Double = 1e-12,
 //    // uses (virtual) merging of MECs instead of deflation if only one goal is present

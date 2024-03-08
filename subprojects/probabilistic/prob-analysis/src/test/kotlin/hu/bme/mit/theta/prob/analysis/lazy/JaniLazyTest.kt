@@ -6,6 +6,7 @@ import hu.bme.mit.theta.prob.analysis.jani.extractSMDPTask
 import hu.bme.mit.theta.prob.analysis.jani.model.Model
 import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
 import hu.bme.mit.theta.prob.analysis.jani.toSMDP
+import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy
 import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import org.junit.Test
@@ -33,26 +34,34 @@ class JaniLazyTest {
                 val task = extractSMDPTask(property)
                 if (task.goal == Goal.MIN) continue
                 if (false) {
-                    val directChecker = SMDPDirectChecker(solver, SMDPLazyChecker.Algorithm.BVI, true)
-                    val directResult = directChecker.check(model, task, SMDPLazyChecker.BRTDPStrategy.RANDOM, 1e-7)
+                    val directChecker = SMDPDirectChecker(
+                        solver = solver,
+                        algorithm = SMDPLazyChecker.Algorithm.BVI,
+                        verboseLogging = true,
+                        brtpStrategy = BRTDPStrategy.RANDOM,
+                        threshold = 1e-7
+                    )
+                    val directResult = directChecker.check(model, task)
                     println("${property.name}: $directResult")
                     break
                 } else {
-                    val result = SMDPLazyChecker(solver, itpSolver, SMDPLazyChecker.Algorithm.BRTDP, true)
-                        .checkExpl(model,
-                                task,
-                                SMDPLazyChecker.BRTDPStrategy.RANDOM,
-                                useMay = true,
-                                useMust = false,
-                                useSeq = false,
-                                useGameRefinement = true
-                            )
+                    val result = SMDPLazyChecker(
+                        smtSolver = solver,
+                        itpSolver = itpSolver,
+                        algorithm = SMDPLazyChecker.Algorithm.BVI,
+                        verboseLogging = true,
+                        useMay = true,
+                        useMust = false,
+                        useSeq = false,
+                        useGameRefinement = true,
+                        brtdpStrategy = BRTDPStrategy.RANDOM,
+                        useQualitativePreprocessing = false
+                    ).checkExpl(model, task)
                     println("${property.name}: $result")
                 }
             } else {
                 println("Non-probability property found")
             }
-
         }
     }
 
@@ -79,11 +88,10 @@ class JaniLazyTest {
                             try {
                                 val task = extractSMDPTask(property)
                                 val result = SMDPLazyChecker(
-                                    solver, itpSolver, SMDPLazyChecker.Algorithm.BRTDP
-                                ).checkExpl(
-                                    model, task, SMDPLazyChecker.BRTDPStrategy.MAX_DIFF,
+                                    solver, itpSolver, SMDPLazyChecker.Algorithm.BRTDP,
+                                    brtdpStrategy = BRTDPStrategy.DIFF_BASED,
                                     useMay = true, useMust = false
-                                )
+                                ).checkExpl(model, task,)
                                 println("${property.name}: $result")
                             } catch (e: IllegalArgumentException) {
                                 println(e.message)

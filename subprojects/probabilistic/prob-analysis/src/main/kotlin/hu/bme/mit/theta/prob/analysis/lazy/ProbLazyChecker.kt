@@ -12,9 +12,8 @@ import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
 import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBVISolver
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitilizer
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
-import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.ExplicitInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.FallbackInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTargetInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
@@ -25,22 +24,26 @@ import kotlin.math.min
 import kotlin.random.Random
 
 class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
+    // Model properties
     private val getStdCommands: (SC) -> Collection<ProbabilisticCommand<A>>,
     private val getErrorCommands: (SC) -> Collection<ProbabilisticCommand<A>>,
-
-    // Domain functions
     private val initState: SC,
     private val topInit: SA,
-    private val checkContainment: (SC, SA) -> Boolean,
-    private val isLeq: (SA, SA) -> Boolean,
-    private val mayBeEnabled: (SA, ProbabilisticCommand<A>) -> Boolean,
-    private val mustBeEnabled: (SA, ProbabilisticCommand<A>) -> Boolean,
-    private val isEnabled: (SC, ProbabilisticCommand<A>) -> Boolean,
-    private val concreteTransFunc: (SC, A) -> SC,
-    private val block: (SA, Expr<BoolType>, SC) -> SA,
-    private val postImage: (state: SA, action: A, guard: Expr<BoolType>) -> SA,
-    private val preImage: (SA, A) -> Expr<BoolType>,
-    private val topAfter: (SA, A) -> SA,
+
+    // Domain functions
+    private val domain: LazyDomain<SC, SA, A>,
+//    private val domain.checkContainment: (SC, SA) -> Boolean,
+//    private val domain.isLeq: (SA, SA) -> Boolean,
+//    private val domain.mayBeEnabled: (SA, ProbabilisticCommand<A>) -> Boolean,
+//    private val domain.mustBeEnabled: (SA, ProbabilisticCommand<A>) -> Boolean,
+//    private val domain.isEnabled: (SC, ProbabilisticCommand<A>) -> Boolean,
+//    private val domain.concreteTransFunc: (SC, A) -> SC,
+//    private val domain.block: (SA, Expr<BoolType>, SC) -> SA,
+//    private val domain.blockSeq: (nodes: List<ProbLazyChecker<SC, SA, A>.Node>, guards: List<Expr<BoolType>>, actions: List<A>, toblockAtLast: Expr<BoolType>) -> List<SA> =
+//        { _, _, _, _ -> throw UnsupportedOperationException("No sequence interpolation method specified") },
+//    private val domain.postImage: (state: SA, action: A, guard: Expr<BoolType>) -> SA,
+//    private val domain.preImage: (SA, A) -> Expr<BoolType>,
+//    private val domain.topAfter: (SA, A) -> SA,
 
     // Checker Configuration
     private val goal: Goal,
@@ -50,13 +53,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private val logger: Logger = ConsoleLogger(Logger.Level.VERBOSE),
     private val resetOnUncover: Boolean = true,
     private val useMonotonicBellman: Boolean = false,
-    // TODO: this is both domain- and config-related
-    private val blockSeq: (
-        nodes: List<ProbLazyChecker<SC, SA, A>.Node>,
-        guards: List<Expr<BoolType>>,
-        actions: List<A>,
-        toBlockAtLast: Expr<BoolType>) -> List<SA> =
-        {_,_,_,_ -> throw UnsupportedOperationException("No sequence interpolation method specified")},
     private val useSeq: Boolean = false,
     private val useGameRefinement: Boolean = false,
     private val useQualitativePreprocessing: Boolean = false
@@ -151,7 +147,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             onUncover?.invoke(this)
         }
 
-        fun strengthenWithSeq(toBlock: Expr<BoolType>) {
+        fun strengthenWithSeq(toblock: Expr<BoolType>) {
             var currNode = this
             val nodes = arrayListOf(currNode)
             val guards = arrayListOf<Expr<BoolType>>()
@@ -167,14 +163,14 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                 nodes.add(0, currNode)
             }
 
-            val newLabels = blockSeq(nodes, guards, actions, toBlock)
+            val newLabels = domain.blockSeq(nodes, guards, actions, toblock)
             val forceCovers = arrayListOf<Node>()
             for ((i, node) in nodes.withIndex()) {
                 if(newLabels[i] == node.sa) continue
                 node.sa = newLabels[i]
 
                 for (coveredNode in ArrayList(node.coveredNodes)) { // copy because removeCover() modifies it inside the loop
-                    if (!checkContainment(coveredNode.sc, node.sa)) {
+                    if (!domain.checkContainment(coveredNode.sc, node.sa)) {
                         coveredNode.removeCover()
                         waitlist.add(coveredNode)
                     } else {
@@ -194,7 +190,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             if (newLabel == sa) return
             sa = newLabel
             for (coveredNode in ArrayList(coveredNodes)) { // copy because removeCover() modifies it inside the loop
-                if (!checkContainment(coveredNode.sc, this.sa)) {
+                if (!domain.checkContainment(coveredNode.sc, this.sa)) {
                     coveredNode.removeCover()
                     waitlist.add(coveredNode)
                 } else {
@@ -206,12 +202,12 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             for (backEdge in backEdges) {
                 val parent = backEdge.source
                 val action = backEdge.getActionFor(this)
-                val constrainedToPreimage = block(
+                val constrainedtopreImage = domain.block(
                     parent.sa,
-                    Not(preImage(this.sa, action)),
+                    Not(domain.preImage(this.sa, action)),
                     parent.sc
                 )
-                parent.changeAbstractLabel(constrainedToPreimage)
+                parent.changeAbstractLabel(constrainedtopreImage)
             }
         }
 
@@ -222,9 +218,9 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         fun strengthenForCovering() {
             require(isCovered)
             val coverer = coveringNode!!
-            if (!isLeq(sa, coverer.sa)) {
+            if (!domain.isLeq(sa, coverer.sa)) {
                 if (useSeq) strengthenWithSeq(Not(coverer.sa.toExpr()))
-                else changeAbstractLabel(block(sa, Not(coverer.sa.toExpr()), sc))
+                else changeAbstractLabel(domain.block(sa, Not(coverer.sa.toExpr()), sc))
             }
         }
 
@@ -232,13 +228,13 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             c: ProbabilisticCommand<A>,
             negate: Boolean = false
         ) {
-            val toBlock =
+            val toblock =
                 if (negate) Not(c.guard)
                 else c.guard
 
-            if(useSeq) strengthenWithSeq(toBlock)
+            if(useSeq) strengthenWithSeq(toblock)
             else {
-                val modifiedAbstract = block(sa, toBlock, sc)
+                val modifiedAbstract = domain.block(sa, toblock, sc)
                 changeAbstractLabel(modifiedAbstract)
             }
         }
@@ -1035,37 +1031,37 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         val children = arrayListOf<Node>()
 
         for (cmd in errorCommands) {
-            if (isEnabled(n.sc, cmd)) {
+            if (domain.isEnabled(n.sc, cmd)) {
                 n.markAsErrorNode()
-                if(useMust && !mustBeEnabled(n.sa, cmd)) {
+                if(useMust && !domain.mustBeEnabled(n.sa, cmd)) {
                     n.strengthenAgainstCommand(cmd, true)
                 }
 
                 return children // keep error nodes absorbing
-            } else if (useMay && mayBeEnabled(n.sa, cmd)) {
+            } else if (useMay && domain.mayBeEnabled(n.sa, cmd)) {
                 n.strengthenAgainstCommand(cmd, false)
             }
         }
         for (cmd in stdCommands) {
-            if (isEnabled(n.sc, cmd)) {
+            if (domain.isEnabled(n.sc, cmd)) {
                 val target = cmd.result.transform { a ->
-                    val nextState = concreteTransFunc(n.sc, a)
-                    val newNode = Node(nextState, topAfter(n.sa, a))
+                    val nextState = domain.concreteTransFunc(n.sc, a)
+                    val newNode = Node(nextState, domain.topAfter(n.sa, a))
                     children.add(newNode)
                     a to newNode
                 }
-                if(useMust && !mustBeEnabled(n.sa, cmd)) {
+                if(useMust && !domain.mustBeEnabled(n.sa, cmd)) {
                     n.strengthenAgainstCommand(cmd, true)
                 }
 
                 val surelyEnabled =
                     !useGameRefinement || ( // don't care about it if we don't use game refinement
                         (useMay && useMust) || // if an Exact-PARG is built, then the standard refinement takes care of it
-                        (useMay && mustBeEnabled(n.sa, cmd))
-                        || (useMust && TODO("is this right?") && mayBeEnabled(n.sa, cmd)))
+                        (useMay && domain.mustBeEnabled(n.sa, cmd))
+                        || (useMust && TODO("is this right?") && domain.mayBeEnabled(n.sa, cmd)))
 
                 n.createEdge(target, cmd.guard, surelyEnabled, cmd)
-            } else if (useMay && mayBeEnabled(n.sa, cmd)) {
+            } else if (useMay && domain.mayBeEnabled(n.sa, cmd)) {
                 n.strengthenAgainstCommand(cmd, false)
             }
         }
@@ -1084,7 +1080,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             }
         }
         for (otherNode in reachedSet) {
-            if (!otherNode.isCovered && checkContainment(node.sc, otherNode.sa)) {
+            if (!otherNode.isCovered && domain.checkContainment(node.sc, otherNode.sa)) {
                 node.coverWith(otherNode)
                 node.strengthenForCovering()
                 break
@@ -1177,8 +1173,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         outerThreshold: Double
     ): Double {
         val rewardFunction = TargetRewardFunction<Node, PARGAction> { it.isErrorNode && !it.isCovered }
-        lateinit var fullInitializer: SGSolutionInitilizer<Node, PARGAction>
-        lateinit var trappedInitializer: SGSolutionInitilizer<Node, PARGAction>
+        lateinit var fullInitializer: SGSolutionInitializer<Node, PARGAction>
+        lateinit var trappedInitializer: SGSolutionInitializer<Node, PARGAction>
         var parg = PARG(initNode, reachedSet)
         var trappedParg = TrappedPARG(initNode, reachedSet)
 

@@ -1,6 +1,6 @@
 package hu.bme.mit.theta.probabilistic
 
-import hu.bme.mit.theta.probabilistic.gamesolvers.BVISolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGBVISolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.UntargetSetUpperInitializer
@@ -27,9 +27,9 @@ class SolverTest(
         val tolerance = 1e-8
         val solver = VISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
             tolerance,
-//            initializer = TargetSetLowerInitializer(input.targets::contains),
             TargetRewardFunction(input.targets::contains),
-            false
+            false,
+            TargetSetLowerInitializer(input.targets::contains)
         )
         for ((goal, expectedResult) in input.expectedReachability) {
             val analysisTask = AnalysisTask(input.game, goal)
@@ -47,9 +47,8 @@ class SolverTest(
         val tolerance = 1e-8
         val solver = VISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
             tolerance,
-//            initializer = TargetSetLowerInitializer(input.targets::contains),
             TargetRewardFunction(input.targets::contains),
-            true
+            true, TargetSetLowerInitializer(input.targets::contains),
         )
         for ((goal, expectedResult) in input.expectedReachability) {
             val analysisTask = AnalysisTask(input.game, goal)
@@ -65,7 +64,7 @@ class SolverTest(
     @Test
     fun bviSolverTest() {
         val tolerance = 1e-8
-        val solver = BVISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
+        val solver = SGBVISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
             tolerance,
             lowerInitializer = TargetSetLowerInitializer(input.targets::contains),
             upperInitilizer = UntargetSetUpperInitializer {

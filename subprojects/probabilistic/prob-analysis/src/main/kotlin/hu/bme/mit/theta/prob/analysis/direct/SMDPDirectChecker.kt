@@ -1,4 +1,4 @@
-package hu.bme.mit.theta.prob.analysis.concrete
+package hu.bme.mit.theta.prob.analysis.direct
 
 import com.google.common.base.Stopwatch
 import hu.bme.mit.theta.analysis.expl.ExplInitFunc
@@ -31,7 +31,7 @@ class SMDPDirectChecker(
     val algorithm: SMDPLazyChecker.Algorithm,
     val verboseLogging: Boolean = false,
     val brtpStrategy: SMDPLazyChecker.BRTDPStrategy = DIFF_BASED,
-    val threshold: Double,
+    val threshold: Double = 1e-7,
     val useQualitativePreprocessing: Boolean = false
 ) {
 

@@ -52,7 +52,7 @@ class ExplicitStochasticGameTest {
             }
 
             override fun getAllNodes(): Collection<Int> = (0..10).toList()
-        }.materialize()
+        }.materialize().first
         val allNodes = materGame.getAllNodes()
         assertEquals(11, allNodes.size)
         val init = materGame.initialNode

@@ -1,6 +1,6 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
-import hu.bme.mit.theta.prob.analysis.concrete.SMDPDirectChecker
+import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectChecker
 import hu.bme.mit.theta.prob.analysis.jani.SMDPProperty
 import hu.bme.mit.theta.prob.analysis.jani.extractSMDPTask
 import hu.bme.mit.theta.prob.analysis.jani.model.Model

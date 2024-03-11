@@ -30,20 +30,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private val initState: SC,
     private val topInit: SA,
 
-    // Domain functions
     private val domain: LazyDomain<SC, SA, A>,
-//    private val domain.checkContainment: (SC, SA) -> Boolean,
-//    private val domain.isLeq: (SA, SA) -> Boolean,
-//    private val domain.mayBeEnabled: (SA, ProbabilisticCommand<A>) -> Boolean,
-//    private val domain.mustBeEnabled: (SA, ProbabilisticCommand<A>) -> Boolean,
-//    private val domain.isEnabled: (SC, ProbabilisticCommand<A>) -> Boolean,
-//    private val domain.concreteTransFunc: (SC, A) -> SC,
-//    private val domain.block: (SA, Expr<BoolType>, SC) -> SA,
-//    private val domain.blockSeq: (nodes: List<ProbLazyChecker<SC, SA, A>.Node>, guards: List<Expr<BoolType>>, actions: List<A>, toblockAtLast: Expr<BoolType>) -> List<SA> =
-//        { _, _, _, _ -> throw UnsupportedOperationException("No sequence interpolation method specified") },
-//    private val domain.postImage: (state: SA, action: A, guard: Expr<BoolType>) -> SA,
-//    private val domain.preImage: (SA, A) -> Expr<BoolType>,
-//    private val domain.topAfter: (SA, A) -> SA,
 
     // Checker Configuration
     private val goal: Goal,
@@ -293,8 +280,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         U: Map<Node, Double>, L: Map<Node, Double>,
         goal: Goal,
         merged: Map<Node, Pair<Set<Node>, List<Edge>>>
-    ): Node
-    {
+    ): Node {
         // TODO: force exiting end components
         // first we select the best action according to U if maxing/L if mining so that the policy is optimistic
         // O for optimistic
@@ -1116,7 +1102,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             else dirac(node.coveringNode!!)
 
         override fun getPlayer(node: Node): Int = 0 // This is an MDP
-
     }
 
     private fun computeErrorProb(
@@ -1192,16 +1177,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         while(true) {
             val fullAnalysisTask = AnalysisTask(parg, { goal })
             val trappedAnalysisTask = AnalysisTask(trappedParg, { goal })
-
-//            val lowerQuantSolver =
-//                if (useBVI) MDPBVISolver(innerThreshold, rewardFunction, trappedInitializer)
-//                else VISolver(innerThreshold, rewardFunction, useGS = false, trappedInitializer)
-//            val upperQuantSolver =
-//                if (useBVI) MDPBVISolver(innerThreshold, rewardFunction, fullInitializer)
-//                else VISolver(innerThreshold, rewardFunction, useGS = false, fullInitializer)
-//
-//            val upperValues = upperQuantSolver.solve(fullAnalysisTask)
-//            val lowerValues = lowerQuantSolver.solve(trappedAnalysisTask)
 
             lateinit var lowerValues: Map<Node, Double>
             lateinit var upperValues: Map<Node, Double>

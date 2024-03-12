@@ -26,6 +26,8 @@ import kotlin.collections.HashMap
 import kotlin.math.min
 import kotlin.random.Random
 
+private typealias CheckerNode = DirectChecker.Node<SMDPState<ExplState>>
+
 class SMDPDirectChecker(
     val solver: Solver,
     val algorithm: SMDPLazyChecker.Algorithm,
@@ -62,7 +64,49 @@ class SMDPDirectChecker(
         }
     }
 
+
     fun check(
+        smdp: SMDP,
+        smdpReachabilityTask: SMDPReachabilityTask,
+        solverSupplier: (
+            threshold: Double,
+            rewardFunction:
+            GameRewardFunction<CheckerNode, FiniteDistribution<CheckerNode>>,
+            initializer:
+            SGSolutionInitializer<CheckerNode, FiniteDistribution<CheckerNode>>
+        ) -> StochasticGameSolver<CheckerNode, FiniteDistribution<CheckerNode>>
+    ): Double {
+        val initFunc = SmdpInitFunc<ExplState, ExplPrec>(
+            ExplInitFunc.create(solver, smdp.getFullInitExpr()),
+            smdp
+        )
+        val fullPrec = ExplPrec.of(smdp.getAllVars())
+        val initStates = initFunc.getInitStates(fullPrec)
+        if(initStates.size != 1)
+            throw RuntimeException("initial state must be deterministic")
+
+        val smdpLts = SmdpCommandLts<ExplState>(smdp)
+        fun commandsWithPrecondition(state: SMDPState<ExplState>) =
+            smdpLts.getCommandsFor(state).map { it.withPrecondition(smdpReachabilityTask.constraint) }
+
+        val transFunc = SMDPTransFunc(ExplStmtTransFunc.create(solver, 0))
+
+        val directChecker = DirectChecker<SMDPState<ExplState>, SMDPCommandAction>(
+            ::commandsWithPrecondition,
+            this::isEnabled,
+            { s -> smdpReachabilityTask.targetExpr.eval(s.domainState) == True() },
+            initStates.first(),
+            transFunc,
+            fullPrec,
+            solverSupplier,
+            useQualitativePreprocessing,
+            verboseLogging
+        )
+
+        return directChecker.vi(smdpReachabilityTask.goal, threshold)
+    }
+
+    fun oldCheck(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask
     ): Double {
@@ -116,6 +160,7 @@ class SMDPDirectChecker(
             )
         }
     }
+
     private fun brtdp(
         getStdCommands: (SMDPState<ExplState>) -> Collection<ProbabilisticCommand<SMDPCommandAction>>,
         targetExpression: Expr<BoolType>,
@@ -368,7 +413,7 @@ class SMDPDirectChecker(
         val newChildren = arrayListOf<Node>()
         val revisited = arrayListOf<Node>()
         for (cmd in stdCommands) {
-            if (isEnabled(currState.domainState, cmd)) {
+            if (isEnabled(currState, cmd)) {
                 val target = cmd.result.transform { a ->
                     val nextDataState =
                         transFunc
@@ -394,8 +439,8 @@ class SMDPDirectChecker(
         return Pair(newChildren, revisited)
     }
 
-    private fun isEnabled(state: ExplState, cmd: ProbabilisticCommand<SMDPCommandAction>): Boolean {
-        return cmd.guard.eval(state) == True()
+    private fun isEnabled(state: SMDPState<ExplState>, cmd: ProbabilisticCommand<SMDPCommandAction>): Boolean {
+        return cmd.guard.eval(state.domainState) == True()
     }
 
     private fun findMEC(root: Node): Set<Node> {

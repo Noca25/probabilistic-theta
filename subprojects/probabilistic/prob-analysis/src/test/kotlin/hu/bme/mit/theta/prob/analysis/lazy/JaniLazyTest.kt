@@ -8,7 +8,9 @@ import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
 import hu.bme.mit.theta.prob.analysis.jani.toSMDP
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy
 import hu.bme.mit.theta.probabilistic.Goal
+import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBVISolver
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
+import org.junit.Ignore
 import org.junit.Test
 import java.nio.file.Paths
 import kotlin.io.path.isDirectory
@@ -33,7 +35,7 @@ class JaniLazyTest {
             if (property is SMDPProperty.ProbabilityProperty || property is SMDPProperty.ProbabilityThresholdProperty) {
                 val task = extractSMDPTask(property)
                 if (task.goal == Goal.MIN) continue
-                if (false) {
+                if (true) {
                     val directChecker = SMDPDirectChecker(
                         solver = solver,
                         algorithm = SMDPLazyChecker.Algorithm.BVI,
@@ -41,7 +43,7 @@ class JaniLazyTest {
                         brtpStrategy = BRTDPStrategy.RANDOM,
                         threshold = 1e-7
                     )
-                    val directResult = directChecker.check(model, task)
+                    val directResult = directChecker.check(model, task, ::MDPBVISolver)
                     println("${property.name}: $directResult")
                     break
                 } else {
@@ -65,7 +67,7 @@ class JaniLazyTest {
         }
     }
 
-    @Test
+    @Ignore @Test
     fun runAll() {
         val dir2 = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp")
         for (d in dir2.listDirectoryEntries()) {

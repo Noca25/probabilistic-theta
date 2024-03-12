@@ -1,6 +1,7 @@
 package hu.bme.mit.theta.prob.analysis.direct
 
 import com.google.common.base.Stopwatch
+import hu.bme.mit.theta.analysis.State
 import hu.bme.mit.theta.analysis.TransFunc
 import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
@@ -23,13 +24,14 @@ import java.util.concurrent.TimeUnit
 import kotlin.collections.HashMap
 import kotlin.math.min
 
-class DirectChecker<S: ExplState, A: StmtAction>(
-    private val getStdCommands: (S) -> Collection<ProbabilisticCommand<A>>,
-    private val getTargetExpression: (S) -> Expr<BoolType>,
-    private val initState: S,
-    private val fullPrec: ExplPrec,
+class DirectChecker<S: State, A: StmtAction>(
+    val getStdCommands: (S) -> Collection<ProbabilisticCommand<A>>,
+    val isEnabled: (S, ProbabilisticCommand<A>) -> Boolean,
+    val isTarget: (S) -> Boolean,
+    val initState: S,
 
-    val transFunc: TransFunc<S, A, ExplPrec>,
+    val transFunc: TransFunc<S, in A, ExplPrec>,
+    val fullPrec: ExplPrec,
     val mdpSolverSupplier:
         (threshold: Double,
          rewardFunction: GameRewardFunction<Node<S>, FiniteDistribution<Node<S>>>,
@@ -71,7 +73,6 @@ class DirectChecker<S: ExplState, A: StmtAction>(
     fun vi(goal: Goal, threshold: Double): Double {
 
         return fullyExplored(
-            getStdCommands, getTargetExpression,
             initState, goal, threshold, fullPrec, mdpSolverSupplier
         )
 
@@ -126,8 +127,6 @@ class DirectChecker<S: ExplState, A: StmtAction>(
 
     @Deprecated("Use the delegated version instead, kept for stability")
     private fun brtdp(
-        getStdCommands: (S) -> Collection<ProbabilisticCommand<A>>,
-        targetExpression: Expr<BoolType>,
         initState: S,
         goal: Goal,
         successorSelection:
@@ -181,7 +180,7 @@ class DirectChecker<S: ExplState, A: StmtAction>(
                         merged[lastNode] = setOf(lastNode) to lastNode.getOutgoingEdges()
 
                     for (newNode in newlyExpanded) {
-                        newNode.isTargetNode = targetExpression.eval(newNode.state) == True()
+                        newNode.isTargetNode = isTarget(newNode.state)
 
                         // treating each node as its own EC at first so that value computations can be done
                         // solely based on the _merged_ map
@@ -255,8 +254,6 @@ class DirectChecker<S: ExplState, A: StmtAction>(
     }
     
     private fun fullyExplored(
-        getStdCommands: (S) -> Collection<ProbabilisticCommand<A>>,
-        getTargetExpression: (S) -> Expr<BoolType>,
         initState: S,
         goal: Goal,
         threshold: Double,
@@ -269,7 +266,7 @@ class DirectChecker<S: ExplState, A: StmtAction>(
     ): Double {
         val timer = Stopwatch.createStarted()
 
-        val initNode = Node<S>(initState)
+        val initNode = Node(initState)
         val waitlist: Queue<Node<S>> = ArrayDeque()
         waitlist.add(initNode)
         val reachedSet = hashMapOf(initState to initNode)
@@ -363,8 +360,7 @@ class DirectChecker<S: ExplState, A: StmtAction>(
                         val n = Node<S>(nextState)
                         newChildren.add(n)
                         reachedSet[nextState] = n
-                        n.isTargetNode =
-                            getTargetExpression(n.state).eval(n.state) == True()
+                        n.isTargetNode = isTarget(n.state)
                         n
                     }
                     newNode
@@ -373,10 +369,6 @@ class DirectChecker<S: ExplState, A: StmtAction>(
             }
         }
         return Pair(newChildren, revisited)
-    }
-
-    private fun isEnabled(state: ExplState, cmd: ProbabilisticCommand<A>): Boolean {
-        return cmd.guard.eval(state) == True()
     }
 
     private fun findMEC(root: Node<S>): Set<Node<S>> {

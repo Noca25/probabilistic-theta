@@ -17,11 +17,10 @@ import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.solver.Solver
 
-private typealias SimpleCheckerNode = DirectChecker.Node<ExplState>
+private typealias SimpleCheckerNode = DirectCheckerNode<ExplState, BasicStmtAction>
 class SimpleCommandsDirectChecker(
     val solver: Solver,
     val verboseLogging: Boolean = false,
-    val threshold: Double = 1e-7,
     val useQualitativePreprocessing: Boolean = false
 ) {
 
@@ -31,7 +30,6 @@ class SimpleCommandsDirectChecker(
         invar: Expr<BoolType>,
         goal: Goal,
         solverSupplier: (
-            threshold: Double,
             rewardFunction:
             GameRewardFunction<SimpleCheckerNode, FiniteDistribution<SimpleCheckerNode>>,
             initializer:
@@ -55,7 +53,7 @@ class SimpleCommandsDirectChecker(
             verboseLogging
         )
 
-        return directChecker.check(goal, threshold)
+        return directChecker.check(goal)
     }
 
     private fun isEnabled(state: ExplState, cmd: ProbabilisticCommand<BasicStmtAction>): Boolean {

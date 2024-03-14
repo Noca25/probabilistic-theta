@@ -26,9 +26,9 @@ class SolverTest(
     fun viSolverTest() {
         val tolerance = 1e-8
         val solver = VISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
-            tolerance,
             TargetRewardFunction(input.targets::contains),
             TargetSetLowerInitializer(input.targets::contains),
+            tolerance,
             false
         )
         for ((goal, expectedResult) in input.expectedReachability) {
@@ -46,9 +46,9 @@ class SolverTest(
     fun viSolverGSTest() {
         val tolerance = 1e-8
         val solver = VISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
-            tolerance,
             TargetRewardFunction(input.targets::contains),
-            TargetSetLowerInitializer(input.targets::contains), true,
+            TargetSetLowerInitializer(input.targets::contains),
+            tolerance, true,
         )
         for ((goal, expectedResult) in input.expectedReachability) {
             val analysisTask = AnalysisTask(input.game, goal)

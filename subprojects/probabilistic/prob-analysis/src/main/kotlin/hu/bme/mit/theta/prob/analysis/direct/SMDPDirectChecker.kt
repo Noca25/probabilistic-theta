@@ -13,24 +13,21 @@ import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.solver.Solver
 
-private typealias CheckerNode = DirectChecker.Node<SMDPState<ExplState>>
-
+typealias SMDPDirectCheckerNode = DirectCheckerNode<SMDPState<ExplState>, SMDPCommandAction>
 class SMDPDirectChecker(
     val solver: Solver,
     val verboseLogging: Boolean = false,
-    val threshold: Double = 1e-7,
     val useQualitativePreprocessing: Boolean = false
 ) {
     fun check(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask,
         solverSupplier: (
-            threshold: Double,
             rewardFunction:
-            GameRewardFunction<CheckerNode, FiniteDistribution<CheckerNode>>,
+            GameRewardFunction<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>,
             initializer:
-            SGSolutionInitializer<CheckerNode, FiniteDistribution<CheckerNode>>
-        ) -> StochasticGameSolver<CheckerNode, FiniteDistribution<CheckerNode>>
+            SGSolutionInitializer<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
+        ) -> StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
     ): Double {
         val initFunc = SmdpInitFunc<ExplState, ExplPrec>(
             ExplInitFunc.create(solver, smdp.getFullInitExpr()),
@@ -59,7 +56,7 @@ class SMDPDirectChecker(
             verboseLogging
         )
 
-        return directChecker.check(smdpReachabilityTask.goal, threshold)
+        return directChecker.check(smdpReachabilityTask.goal)
     }
 
     private fun isEnabled(state: SMDPState<ExplState>, cmd: ProbabilisticCommand<SMDPCommandAction>): Boolean {

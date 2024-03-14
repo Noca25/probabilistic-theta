@@ -1,8 +1,8 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers
 
-import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 import hu.bme.mit.theta.probabilistic.AnalysisTask
 import hu.bme.mit.theta.probabilistic.GameRewardFunction
+import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 
 /**
  * Implementation of standard Value Iteration.
@@ -10,9 +10,9 @@ import hu.bme.mit.theta.probabilistic.GameRewardFunction
  * Only usable for finite games.
  */
 class VISolver<N, A>(
-    val tolerance: Double,
     val rewardFunction: GameRewardFunction<N, A>,
     val initializer: SGSolutionInitializer<N, A>,
+    val tolerance: Double,
     val useGS: Boolean = false,
 ): StochasticGameSolver<N, A> {
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {

@@ -5,9 +5,9 @@ import java.util.*
 import kotlin.math.min
 
 class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
-    val threshold: Double,
     val rewardFunction: TargetRewardFunction<N, A>,
     val successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N,
+    val threshold: Double = 1e-7,
     val progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
      = { _,_,_,_ -> }
 ): StochasticGameSolver<N, A> {

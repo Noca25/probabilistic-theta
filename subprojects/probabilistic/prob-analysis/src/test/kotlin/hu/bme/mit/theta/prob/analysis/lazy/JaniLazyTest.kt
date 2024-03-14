@@ -1,14 +1,19 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
+import hu.bme.mit.theta.analysis.expl.ExplState
+import hu.bme.mit.theta.prob.analysis.direct.DirectChecker
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectChecker
 import hu.bme.mit.theta.prob.analysis.jani.SMDPProperty
+import hu.bme.mit.theta.prob.analysis.jani.SMDPState
 import hu.bme.mit.theta.prob.analysis.jani.extractSMDPTask
 import hu.bme.mit.theta.prob.analysis.jani.model.Model
 import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
 import hu.bme.mit.theta.prob.analysis.jani.toSMDP
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy
-import hu.bme.mit.theta.probabilistic.Goal
-import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBVISolver
+import hu.bme.mit.theta.probabilistic.*
+import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBRTDPSolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
+import hu.bme.mit.theta.probabilistic.gamesolvers.randomSelection
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import org.junit.Ignore
 import org.junit.Test
@@ -38,12 +43,20 @@ class JaniLazyTest {
                 if (true) {
                     val directChecker = SMDPDirectChecker(
                         solver = solver,
-                        algorithm = SMDPLazyChecker.Algorithm.BVI,
                         verboseLogging = true,
-                        brtpStrategy = BRTDPStrategy.RANDOM,
                         threshold = 1e-7
                     )
-                    val directResult = directChecker.check(model, task, ::MDPBVISolver)
+                    //val directResult = directChecker.check(model, task, ::VISolver)
+
+                    val directResult = directChecker.check(model, task) { threshold: Double,
+                                                                          reward: GameRewardFunction<DirectChecker.Node<SMDPState<ExplState>>, FiniteDistribution<DirectChecker.Node<SMDPState<ExplState>>>>,
+                                                                          initializer: SGSolutionInitializer<DirectChecker.Node<SMDPState<ExplState>>, FiniteDistribution<DirectChecker.Node<SMDPState<ExplState>>>> ->
+                        val targetRewardFunction =
+                            reward as? TargetRewardFunction<DirectChecker.Node<SMDPState<ExplState>>, FiniteDistribution<DirectChecker.Node<SMDPState<ExplState>>>>
+                                ?: throw UnsupportedOperationException("BRTDP unsupported for general rewards")
+                        MDPBRTDPSolver(threshold, targetRewardFunction, StochasticGame<DirectChecker.Node<SMDPState<ExplState>>, FiniteDistribution<DirectChecker.Node<SMDPState<ExplState>>>>::randomSelection)
+                    }
+
                     println("${property.name}: $directResult")
                     break
                 } else {

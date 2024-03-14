@@ -4,24 +4,21 @@ import com.google.common.base.Stopwatch
 import hu.bme.mit.theta.analysis.State
 import hu.bme.mit.theta.analysis.TransFunc
 import hu.bme.mit.theta.analysis.expl.ExplPrec
-import hu.bme.mit.theta.analysis.expl.ExplState
 import hu.bme.mit.theta.analysis.expr.StmtAction
-import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.*
-import hu.bme.mit.theta.core.type.booltype.BoolType
+import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
-import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.probabilistic.*
+import hu.bme.mit.theta.probabilistic.gamesolvers.ExpandableNode
 import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBRTDPSolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
-import hu.bme.mit.theta.probabilistic.gamesolvers.diffBasedSelection
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTargetInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
+import hu.bme.mit.theta.probabilistic.gamesolvers.randomSelection
 import java.util.*
 import java.util.concurrent.TimeUnit
-import kotlin.collections.HashMap
 import kotlin.math.min
 
 class DirectChecker<S: State, A: StmtAction>(
@@ -41,8 +38,7 @@ class DirectChecker<S: State, A: StmtAction>(
     val verboseLogging: Boolean = false
 ) {
 
-
-    class Node<S>(val state: S) {
+    class Node<S>(val state: S): ExpandableNode<Node<S>> {
         companion object {
             private var nextId = 0
         }
@@ -60,6 +56,14 @@ class DirectChecker<S: State, A: StmtAction>(
             return Objects.hashCode(this.id)
         }
 
+        override fun isExpanded(): Boolean {
+            return isExpanded
+        }
+
+        override fun expand(): Pair<List<Node<S>>, List<Node<S>>> {
+            TODO("Not yet implemented")
+        }
+
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (javaClass != other?.javaClass) return false
@@ -68,61 +72,6 @@ class DirectChecker<S: State, A: StmtAction>(
 
             return id == other.id
         }
-    }
-
-    fun vi(goal: Goal, threshold: Double): Double {
-
-        return fullyExplored(
-            initState, goal, threshold, fullPrec, mdpSolverSupplier
-        )
-
-    }
-
-    fun brtdp(goal: Goal, threshold: Double): Double {
-        val timer = Stopwatch.createStarted()
-
-        val initNode = Node(initState)
-        val game = object : StochasticGame<Node<S>, FiniteDistribution<Node<S>>> {
-            override val initialNode: Node<S>
-                get() = initNode
-
-            override fun getAllNodes(): Collection<Node<S>> = throw UnsupportedOperationException()
-
-            override fun getPlayer(node: Node<S>): Int = 0
-
-            override fun getResult(node: Node<S>, action: FiniteDistribution<Node<S>>): FiniteDistribution<Node<S>> {
-                require(node.isExpanded || node.isTargetNode)
-                return action
-            }
-
-            override fun getAvailableActions(node: Node<S>): List<FiniteDistribution<Node<S>>> {
-                require(node.isExpanded || node.isTargetNode)
-                return node.getOutgoingEdges()
-            }
-        }
-
-        val rewardFunction =
-            TargetRewardFunction<Node<S>, FiniteDistribution<Node<S>>> {
-                it.isTargetNode
-            }
-        val reachedSet = hashMapOf(initState to initNode)
-        val checker = MDPBRTDPSolver(
-            threshold, { i, reachedSet, linit, uinit ->
-                if (i % 100 == 0)
-                    if(verboseLogging) {
-                        println(
-                            "$i: nodes: ${reachedSet.size}, [${linit}, ${uinit}], " +
-                                    "d=${uinit - linit}, " +
-                                    "time (ms): ${timer.elapsed(TimeUnit.MILLISECONDS)}"
-                        )
-                    }
-            }, Node<S>::isExpanded,
-            { expand(this, reachedSet, fullPrec)},
-            rewardFunction, game::diffBasedSelection
-        )
-        val res = checker.solve(AnalysisTask(game, {goal}))
-        timer.stop()
-        return res[initNode]!!
     }
 
     @Deprecated("Use the delegated version instead, kept for stability")
@@ -173,7 +122,7 @@ class DirectChecker<S: State, A: StmtAction>(
                     val (newlyExpanded, revisited) = expand(
                         lastNode,
                         reachedSet,
-                        fullPrec
+                        null
                     )
                     revisitedNodes.addAll(revisited)
                     if (merged[lastNode]!!.first.size == 1)
@@ -253,58 +202,13 @@ class DirectChecker<S: State, A: StmtAction>(
         return U[initNode]!!
     }
     
-    private fun fullyExplored(
-        initState: S,
+    fun check(
         goal: Goal,
         threshold: Double,
-        fullPrec: ExplPrec,
-        solverSupplier:
-            (threshold: Double,
-             rewardFunction: GameRewardFunction<Node<S>, FiniteDistribution<Node<S>>>,
-             initializer: SGSolutionInitializer<Node<S>, FiniteDistribution<Node<S>>>)
-        -> StochasticGameSolver<Node<S>, FiniteDistribution<Node<S>>>
+        measureExplorationTime: Boolean = false
     ): Double {
-        val timer = Stopwatch.createStarted()
 
-        val initNode = Node(initState)
-        val waitlist: Queue<Node<S>> = ArrayDeque()
-        waitlist.add(initNode)
-        val reachedSet = hashMapOf(initState to initNode)
-        val allNodes = arrayListOf(initNode)
-        while (!waitlist.isEmpty()) {
-            val node = waitlist.remove()
-            if(!node.isTargetNode) {
-                val (newNodes, _) = expand(
-                    node,
-                    reachedSet,
-                    fullPrec
-                )
-                waitlist.addAll(newNodes)
-                allNodes.addAll(newNodes)
-            }
-        }
-
-        timer.stop()
-        val explorationTime = timer.elapsed(TimeUnit.MILLISECONDS)
-        println("Exploration time (ms): $explorationTime")
-        timer.reset()
-        timer.start()
-
-        val game = object : StochasticGame<Node<S>, FiniteDistribution<Node<S>>> {
-            override val initialNode: Node<S>
-                get() = initNode
-
-            override fun getAllNodes(): Collection<Node<S>> = allNodes
-
-            override fun getPlayer(node: Node<S>): Int = 0
-
-            override fun getResult(node: Node<S>, action: FiniteDistribution<Node<S>>)
-                    = action
-
-            override fun getAvailableActions(node: Node<S>)
-                    = node.getOutgoingEdges()
-
-        }
+        val game = DirectCheckerMDP()
 
         val rewardFunction =
             TargetRewardFunction<Node<S>, FiniteDistribution<Node<S>>> {
@@ -316,26 +220,66 @@ class DirectChecker<S: State, A: StmtAction>(
                 it.isTargetNode
             }
 
+        val timer = Stopwatch.createStarted()
+        if(measureExplorationTime) {
+            game.getAllNodes() // this forces full exploration of the game
+            timer.stop()
+            val explorationTime = timer.elapsed(TimeUnit.MILLISECONDS)
+            println("Exploration time (ms): $explorationTime")
+            timer.reset()
+            timer.start()
+        }
 
-        val quantSolver = solverSupplier(threshold, rewardFunction, initializer)
+        val quantSolver = mdpSolverSupplier(threshold, rewardFunction, initializer)
 
         val analysisTask = AnalysisTask(game, {goal})
-        println("All nodes: ${allNodes.size}")
+        println("All nodes: ${game.reachedSet.size}")
         val values = quantSolver.solve(analysisTask)
 
         timer.stop()
         val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
         println("Probability computation time (ms): $probTime")
-        println("Total time (ms): ${explorationTime+probTime}")
-        println("All nodes: ${reachedSet.size}")
+        println("All nodes: ${game.reachedSet.size}")
 
-        return values[initNode]!!
+        return values[game.initNode]!!
+    }
+
+    inner class DirectCheckerMDP : StochasticGame<Node<S>, FiniteDistribution<Node<S>>> {
+        val initNode = Node(initState)
+        val waitlist: Queue<Node<S>> = ArrayDeque<Node<S>>().apply { add(initNode) }
+        val reachedSet = hashMapOf(initState to initNode)
+
+        override val initialNode: Node<S>
+            get() = initNode
+
+        override fun getAllNodes(): Collection<Node<S>> {
+            while (!waitlist.isEmpty()) {
+                val node = waitlist.remove()
+                if(!node.isTargetNode) {
+                    expand(node, reachedSet, waitlist)
+                }
+            }
+            return reachedSet.values
+        }
+
+        override fun getPlayer(node: Node<S>): Int = 0
+
+        override fun getResult(node: Node<S>, action: FiniteDistribution<Node<S>>): FiniteDistribution<Node<S>> {
+            require(node.isExpanded)
+            return action
+        }
+
+        override fun getAvailableActions(node: Node<S>): List<FiniteDistribution<Node<S>>> {
+            require(node.isExpanded)
+            return node.getOutgoingEdges()
+        }
+
     }
 
     private fun expand(
         node: Node<S>,
         reachedSet: HashMap<S, Node<S>>,
-        fullPrec: ExplPrec
+        waitlist: Queue<Node<S>>?
     ): Pair<List<Node<S>>, List<Node<S>>> {
         val stdCommands = getStdCommands(node.state)
         node.isExpanded = true
@@ -360,7 +304,10 @@ class DirectChecker<S: State, A: StmtAction>(
                         val n = Node<S>(nextState)
                         newChildren.add(n)
                         reachedSet[nextState] = n
-                        n.isTargetNode = isTarget(n.state)
+                        if(isTarget(n.state)) {
+                            n.isTargetNode = true
+                            n.isExpanded = true
+                        }
                         n
                     }
                     newNode
@@ -368,6 +315,7 @@ class DirectChecker<S: State, A: StmtAction>(
                 node.createEdge(target)
             }
         }
+        waitlist?.addAll(newChildren)
         return Pair(newChildren, revisited)
     }
 

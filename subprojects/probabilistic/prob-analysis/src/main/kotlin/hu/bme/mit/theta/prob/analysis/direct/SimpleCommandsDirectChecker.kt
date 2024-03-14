@@ -55,7 +55,7 @@ class SimpleCommandsDirectChecker(
             verboseLogging
         )
 
-        return directChecker.vi(goal, threshold)
+        return directChecker.check(goal, threshold)
     }
 
     private fun isEnabled(state: ExplState, cmd: ProbabilisticCommand<BasicStmtAction>): Boolean {

@@ -1118,7 +1118,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             else TargetSetLowerInitializer { it.isErrorNode && !it.isCovered }
         val quantSolver =
             if(useBVI) MDPBVISolver(threshold, rewardFunction, initilizer)
-            else VISolver(threshold, rewardFunction, useGS = false, initilizer)
+            else VISolver(threshold, rewardFunction, initilizer, useGS = false)
         val analysisTask = AnalysisTask(parg, { goal })
         val nodes = parg.getAllNodes()
         println("All nodes: ${nodes.size}")

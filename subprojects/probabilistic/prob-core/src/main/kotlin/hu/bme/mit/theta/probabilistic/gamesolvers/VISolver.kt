@@ -12,8 +12,8 @@ import hu.bme.mit.theta.probabilistic.GameRewardFunction
 class VISolver<N, A>(
     val tolerance: Double,
     val rewardFunction: GameRewardFunction<N, A>,
-    val useGS: Boolean = false,
     val initializer: SGSolutionInitializer<N, A>,
+    val useGS: Boolean = false,
 ): StochasticGameSolver<N, A> {
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
         val game = analysisTask.game

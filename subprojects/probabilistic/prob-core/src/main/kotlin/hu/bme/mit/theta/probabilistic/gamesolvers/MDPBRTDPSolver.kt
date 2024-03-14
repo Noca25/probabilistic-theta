@@ -4,14 +4,12 @@ import hu.bme.mit.theta.probabilistic.*
 import java.util.*
 import kotlin.math.min
 
-class MDPBRTDPSolver<N, A>(
+class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
     val threshold: Double,
-    val progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
-     = { _,_,_,_ -> },
-    val isExpanded: N.() -> Boolean,
-    val expand: N.() -> Pair<List<N>, List<N>>, //returns: (newlyExpanded, revisited), ensures: reciever.isExpanded
     val rewardFunction: TargetRewardFunction<N, A>,
-    val successorSelection: (N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N
+    val successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N,
+    val progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
+     = { _,_,_,_ -> }
 ): StochasticGameSolver<N, A> {
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
         val game = analysisTask.game
@@ -51,9 +49,6 @@ class MDPBRTDPSolver<N, A>(
                         merged[lastNode] = setOf(lastNode) to game.getAvailableActions(lastNode)
 
                     for (newNode in newlyExpanded) {
-                        // TODO(this should be part of the expansion)
-                        //  newNode = targetExpression.eval(newNode.state.domainState) == BoolExprs.True()
-
                         // treating each node as its own EC at first so that value computations can be done
                         // solely based on the _merged_ map
                         merged[newNode] = setOf(newNode) to game.getAvailableActions(newNode)
@@ -75,7 +70,7 @@ class MDPBRTDPSolver<N, A>(
                     }
                 }
 
-                val nextNode = successorSelection(lastNode, L, U, goal)
+                val nextNode = game.successorSelection(lastNode, L, U, goal)
                 trace.add(nextNode)
             }
 

@@ -1,7 +1,7 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers
 
 import hu.bme.mit.theta.probabilistic.*
-import java.util.Objects
+import java.util.*
 import kotlin.math.max
 import kotlin.math.min
 
@@ -10,13 +10,21 @@ import kotlin.math.min
  * Uses MEC merging to make the upper bound converge, which does not work for general SGs.
  */
 class MDPBVISolver<N, A>(
-    val tolerance: Double,
     val rewardFunction: GameRewardFunction<N, A>,
-    val initializer: SGSolutionInitializer<N, A>
+    val initializer: SGSolutionInitializer<N, A>,
+    val threshold: Double
 ) : StochasticGameSolver<N, A> {
+
 
     companion object {
         var nextNodeId = 0L
+
+        fun <N, A> supplier(threshold: Double) = {
+                rewardFunction: GameRewardFunction<N, A>,
+                initializer: SGSolutionInitializer<N, A> ->
+            MDPBVISolver(rewardFunction, initializer, threshold)
+        }
+
     }
 
     private inner class MergedNode(val origNodes: List<N>, val reward: Double) {
@@ -121,7 +129,7 @@ class MDPBVISolver<N, A>(
         do {
             lCurr = bellmanStep(mergedGame, lCurr, {initGoal}, mergedRewardFunction).result
             uCurr = bellmanStep(mergedGame, uCurr, {initGoal}, mergedRewardFunction).result
-        } while (uCurr[mergedInit]!!-lCurr[mergedInit]!! > tolerance)
+        } while (uCurr[mergedInit]!!-lCurr[mergedInit]!! > threshold)
 
         return RangeSolution(
             nodes.associateWith { lCurr[mergedGameMap[it]!!]!! },

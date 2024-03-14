@@ -15,6 +15,14 @@ class VISolver<N, A>(
     val tolerance: Double,
     val useGS: Boolean = false,
 ): StochasticGameSolver<N, A> {
+    companion object {
+        fun <N, A> supplier(tolerance: Double, useGS: Boolean = false) = {
+            rewardFunction: GameRewardFunction<N, A>,
+            initializer: SGSolutionInitializer<N, A> ->
+            VISolver(rewardFunction, initializer, tolerance, useGS)
+        }
+    }
+
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
         val game = analysisTask.game
         val goal = analysisTask.goal

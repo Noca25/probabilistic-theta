@@ -1,7 +1,5 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
-import hu.bme.mit.theta.analysis.expl.ExplState
-import hu.bme.mit.theta.prob.analysis.direct.DirectCheckerNode
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectChecker
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectCheckerNode
 import hu.bme.mit.theta.prob.analysis.jani.*
@@ -42,20 +40,11 @@ class JaniLazyTest {
                         solver = solver,
                         verboseLogging = true,
                     )
-                    //val directResult = directChecker.check(model, task, ::VISolver)
-
-                    val directResult = directChecker.check(model, task) { reward, initializer ->
-                        val targetRewardFunction =
-                            reward as? TargetRewardFunction<DirectCheckerNode<SMDPState<ExplState>, SMDPCommandAction>, FiniteDistribution<DirectCheckerNode<SMDPState<ExplState>, SMDPCommandAction>>>
-                                ?: throw UnsupportedOperationException("BRTDP unsupported for general rewards")
-                        MDPBRTDPSolver(
-                            targetRewardFunction,
-                            StochasticGame<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
-                            ::randomSelection,
-                            1e-7
-                        )
-                    }
-
+                    val directResult = directChecker.check(
+                        model, task,
+                        //MDPBVISolver.supplier(1e-7)
+                        MDPBRTDPSolver.supplier(1e-7, StochasticGame<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>::randomSelection)
+                    )
                     println("${property.name}: $directResult")
                     break
                 } else {

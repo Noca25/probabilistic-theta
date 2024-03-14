@@ -11,6 +11,19 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
     val progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
      = { _,_,_,_ -> }
 ): StochasticGameSolver<N, A> {
+
+    companion object {
+        fun <N: ExpandableNode<N>, A> supplier(
+            threshold: Double,
+            successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N
+        ) = {
+                rewardFunction: GameRewardFunction<N, A>,
+                initializer: SGSolutionInitializer<N, A> ->
+            require(rewardFunction is TargetRewardFunction<N, A>) {"BRTDP implemented only for reachability yet"}
+            MDPBRTDPSolver(rewardFunction, successorSelection, threshold)
+        }
+    }
+
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
         val game = analysisTask.game
         val initNode = game.initialNode

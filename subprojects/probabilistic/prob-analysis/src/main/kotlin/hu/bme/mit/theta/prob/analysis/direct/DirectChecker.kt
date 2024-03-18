@@ -102,12 +102,12 @@ class DirectChecker<S: State, A: StmtAction>(
         override fun getPlayer(node: NodeClass): Int = 0
 
         override fun getResult(node: NodeClass, action: FiniteDistribution<NodeClass>): FiniteDistribution<NodeClass> {
-            require(node.isExpanded)
+            require(node.expanded)
             return action
         }
 
         override fun getAvailableActions(node: NodeClass): List<FiniteDistribution<NodeClass>> {
-            require(node.isExpanded)
+            require(node.expanded)
             return node.getOutgoingEdges()
         }
 
@@ -115,7 +115,7 @@ class DirectChecker<S: State, A: StmtAction>(
 
             private val id = nextId++
             private val outEdges = arrayListOf<FiniteDistribution<NodeClass>>()
-            var isExpanded: Boolean = false
+            var expanded: Boolean = false
             var isTargetNode: Boolean = false
             fun getOutgoingEdges(): List<FiniteDistribution<NodeClass>> = outEdges
             fun createEdge(target: FiniteDistribution<NodeClass>) {
@@ -127,13 +127,13 @@ class DirectChecker<S: State, A: StmtAction>(
             }
 
             override fun isExpanded(): Boolean {
-                return isExpanded
+                return expanded
             }
 
             override fun expand(
             ): Pair<List<DirectCheckerNode<S, A>>, List<DirectCheckerNode<S, A>>> {
                 val stdCommands = getStdCommands(this.state)
-                this.isExpanded = true
+                this.expanded = true
                 if (this.isTargetNode) return Pair(listOf(), listOf())
 
                 val currState = this.state
@@ -157,7 +157,7 @@ class DirectChecker<S: State, A: StmtAction>(
                                 reachedSet[nextState] = n
                                 if (isTarget(n.state)) {
                                     n.isTargetNode = true
-                                    n.isExpanded = true
+                                    n.expanded = true
                                 }
                                 n
                             }
@@ -181,56 +181,5 @@ class DirectChecker<S: State, A: StmtAction>(
 
         }
 
-    }
-
-    private fun findMEC(root: DirectCheckerNode<S, A>): Set<DirectCheckerNode<S, A>> {
-        fun findSCC(
-            root: DirectCheckerNode<S, A>,
-            availableEdges: (DirectCheckerNode<S, A>) -> List<FiniteDistribution<DirectCheckerNode<S, A>>>
-        ): Set<DirectCheckerNode<S, A>> {
-            val stack = Stack<DirectCheckerNode<S, A>>()
-            val lowlink = hashMapOf<DirectCheckerNode<S, A>, Int>()
-            val index = hashMapOf<DirectCheckerNode<S, A>, Int>()
-            var currIndex = 0
-
-            fun strongConnect(n: DirectCheckerNode<S, A>): Set<DirectCheckerNode<S, A>> {
-                index[n] = currIndex
-                lowlink[n] = currIndex++
-                stack.push(n)
-
-                val successors =
-                    availableEdges(n).flatMap { it.support.map { it } }.toSet()
-                for (m in successors) {
-                    if (m !in index) {
-                        strongConnect(m)
-                        lowlink[n] = min(lowlink[n]!!, lowlink[m]!!)
-                    } else if (stack.contains(m)) {
-                        lowlink[n] = min(lowlink[n]!!, index[m]!!)
-                    }
-                }
-
-                val scc = hashSetOf<DirectCheckerNode<S, A>>()
-                if (lowlink[n] == index[n]) {
-                    do {
-                        val m = stack.pop()
-                        scc.add(m)
-                    } while (m != n)
-                }
-                return scc
-            }
-
-            return strongConnect(root)
-        }
-
-        var scc: Set<DirectCheckerNode<S, A>> = hashSetOf()
-        var availableEdges: (DirectCheckerNode<S, A>) -> List<FiniteDistribution<DirectCheckerNode<S, A>>> = DirectCheckerNode<S, A>::getOutgoingEdges
-        do {
-            val prevSCC = scc
-            scc = findSCC(root, availableEdges)
-            availableEdges = { n: DirectCheckerNode<S, A> ->
-                n.getOutgoingEdges().filter { it.support.all { it in scc } }
-            }
-        } while (scc.size != prevSCC.size)
-        return scc
     }
 }

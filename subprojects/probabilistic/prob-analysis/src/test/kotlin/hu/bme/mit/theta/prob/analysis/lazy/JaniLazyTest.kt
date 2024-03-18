@@ -1,14 +1,14 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectChecker
-import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectCheckerNode
-import hu.bme.mit.theta.prob.analysis.jani.*
+import hu.bme.mit.theta.prob.analysis.jani.SMDPProperty
+import hu.bme.mit.theta.prob.analysis.jani.extractSMDPTask
 import hu.bme.mit.theta.prob.analysis.jani.model.Model
 import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
+import hu.bme.mit.theta.prob.analysis.jani.toSMDP
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy
-import hu.bme.mit.theta.probabilistic.*
-import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBRTDPSolver
-import hu.bme.mit.theta.probabilistic.gamesolvers.randomSelection
+import hu.bme.mit.theta.probabilistic.Goal
+import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBVISolver
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import org.junit.Ignore
 import org.junit.Test
@@ -21,6 +21,7 @@ class JaniLazyTest {
     @Test
     fun runOne() {
         val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\consensus\\consensus.2.jani")
+        //val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\blocksworld\\blocksworld.10.jani")
         println(f.fileName)
         val model = JaniModelMapper().readValue(f.toFile(), Model::class.java).toSMDP(
             mapOf(
@@ -39,11 +40,17 @@ class JaniLazyTest {
                     val directChecker = SMDPDirectChecker(
                         solver = solver,
                         verboseLogging = true,
+                        useQualitativePreprocessing = false
                     )
                     val directResult = directChecker.check(
                         model, task,
-                        //MDPBVISolver.supplier(1e-7)
-                        MDPBRTDPSolver.supplier(1e-7, StochasticGame<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>::randomSelection)
+                        MDPBVISolver.supplier(1e-7)
+//                        MDPBRTDPSolver.supplier(
+//                            1e-7,
+//                            SMDPDirectCheckerGame::diffBasedSelection
+//                        ) { iteration, reachedSet, linit, uinit ->
+//                            println("$iteration: ${reachedSet.size} [$linit, $uinit]")
+//                        }
                     )
                     println("${property.name}: $directResult")
                     break

@@ -8,7 +8,8 @@ import kotlin.random.Random
 private val random = Random(123)
 fun <N, A> StochasticGame<N, A>.randomSelection(
     currNode: N,
-    U: Map<N, Double>, L: Map<N, Double>,
+    L: Map<N, Double>,
+    U: Map<N, Double>,
     goal: Goal
 ): N {
     // first we select the best action according to U if maxing/L if mining so that the policy is optimistic
@@ -27,7 +28,8 @@ fun <N, A> StochasticGame<N, A>.randomSelection(
 
 fun <N, A> StochasticGame<N, A>.diffBasedSelection(
     currNode: N,
-    U: Map<N, Double>, L: Map<N, Double>,
+    L: Map<N, Double>,
+    U: Map<N, Double>,
     goal: Goal
 ): N {
     val O = if (goal == Goal.MAX) U else L
@@ -60,7 +62,8 @@ fun <N, A> StochasticGame<N, A>.diffBasedSelection(
 
 fun <N, A> StochasticGame<N, A>.weightedRandomSelection(
     currNode: N,
-    U: Map<N, Double>, L: Map<N, Double>,
+    L: Map<N, Double>,
+    U: Map<N, Double>,
     goal: Goal
 ): N {
     val O: Map<N, Double> = if (goal == Goal.MAX) U else L

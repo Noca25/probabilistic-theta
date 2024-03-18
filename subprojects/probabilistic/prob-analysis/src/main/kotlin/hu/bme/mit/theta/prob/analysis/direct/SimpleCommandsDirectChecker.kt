@@ -10,14 +10,12 @@ import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.prob.analysis.BasicStmtAction
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
-import hu.bme.mit.theta.probabilistic.FiniteDistribution
-import hu.bme.mit.theta.probabilistic.GameRewardFunction
-import hu.bme.mit.theta.probabilistic.Goal
-import hu.bme.mit.theta.probabilistic.StochasticGameSolver
+import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.solver.Solver
 
-private typealias SimpleCheckerNode = DirectCheckerNode<ExplState, BasicStmtAction>
+typealias SimpleDirectCheckerNode = DirectCheckerNode<ExplState, BasicStmtAction>
+typealias SimpleDirectCheckerGame = StochasticGame<SimpleDirectCheckerNode, FiniteDistribution<SimpleDirectCheckerNode>>
 class SimpleCommandsDirectChecker(
     val solver: Solver,
     val verboseLogging: Boolean = false,
@@ -31,10 +29,10 @@ class SimpleCommandsDirectChecker(
         goal: Goal,
         solverSupplier: (
             rewardFunction:
-            GameRewardFunction<SimpleCheckerNode, FiniteDistribution<SimpleCheckerNode>>,
+            GameRewardFunction<SimpleDirectCheckerNode, FiniteDistribution<SimpleDirectCheckerNode>>,
             initializer:
-            SGSolutionInitializer<SimpleCheckerNode, FiniteDistribution<SimpleCheckerNode>>
-        ) -> StochasticGameSolver<SimpleCheckerNode, FiniteDistribution<SimpleCheckerNode>>
+            SGSolutionInitializer<SimpleDirectCheckerNode, FiniteDistribution<SimpleDirectCheckerNode>>
+        ) -> StochasticGameSolver<SimpleDirectCheckerNode, FiniteDistribution<SimpleDirectCheckerNode>>
     ): Double {
         val fullPrec = ExplPrec.of(initValuation.decls.filterIsInstance<VarDecl<*>>())
         val initState = ExplState.of(initValuation)

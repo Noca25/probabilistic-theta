@@ -9,11 +9,13 @@ import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.GameRewardFunction
+import hu.bme.mit.theta.probabilistic.StochasticGame
 import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.solver.Solver
 
 typealias SMDPDirectCheckerNode = DirectCheckerNode<SMDPState<ExplState>, SMDPCommandAction>
+typealias SMDPDirectCheckerGame = StochasticGame<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
 class SMDPDirectChecker(
     val solver: Solver,
     val verboseLogging: Boolean = false,

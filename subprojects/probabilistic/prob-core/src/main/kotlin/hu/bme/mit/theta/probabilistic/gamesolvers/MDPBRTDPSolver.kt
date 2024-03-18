@@ -15,12 +15,14 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
     companion object {
         fun <N: ExpandableNode<N>, A> supplier(
             threshold: Double,
-            successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N
+            successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N,
+            progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
+            = { _,_,_,_ -> }
         ) = {
                 rewardFunction: GameRewardFunction<N, A>,
                 initializer: SGSolutionInitializer<N, A> ->
             require(rewardFunction is TargetRewardFunction<N, A>) {"BRTDP implemented only for reachability yet"}
-            MDPBRTDPSolver(rewardFunction, successorSelection, threshold)
+            MDPBRTDPSolver(rewardFunction, successorSelection, threshold, progressReport)
         }
     }
 
@@ -34,7 +36,8 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
         var L = hashMapOf(initNode to 0.0)
 
         // virtually merged end components, also maintaining a set of edges that leave the EC for each of them
-        val merged = hashMapOf(initNode to (setOf(initNode) to game.getAvailableActions(initNode)))
+        //val merged = hashMapOf(initNode to (setOf(initNode) to game.getAvailableActions(initNode)))
+        val merged = hashMapOf<N, Pair<Set<N>, Collection<A>>>()
 
         var i = 0
 
@@ -57,14 +60,15 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
                 if (!lastNode.isExpanded()) {
 
                     val (newlyExpanded, revisited) = lastNode.expand()
+                    merged[lastNode] = setOf(lastNode) to game.getAvailableActions(lastNode)
                     revisitedNodes.addAll(revisited)
-                    if (merged[lastNode]!!.first.size == 1)
-                        merged[lastNode] = setOf(lastNode) to game.getAvailableActions(lastNode)
 
                     for (newNode in newlyExpanded) {
                         // treating each node as its own EC at first so that value computations can be done
                         // solely based on the _merged_ map
-                        merged[newNode] = setOf(newNode) to game.getAvailableActions(newNode)
+                        //merged[newNode] = setOf(newNode) to game.getAvailableActions(newNode)
+                        merged[newNode] = setOf(newNode) to emptySet()
+                        reachedSet.add(newNode)
                         if (rewardFunction.isTarget(newNode)) {
                             U[newNode] = 1.0
                             L[newNode] = 1.0
@@ -92,13 +96,13 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
 
                 val mec = findMEC(node, game)
                 val edgesLeavingMEC = mec.flatMap {n ->
-                    game.getAvailableActions(n).filter { a -> game.getResult(n, a).support.any { it !in mec } }
+                    if(!n.isExpanded()) listOf()
+                    else game.getAvailableActions(n).filter { a -> game.getResult(n, a).support.any { it !in mec } }
                 }
-                if (mec.size > 1) {
-                    for (n in mec) {
-                        merged[n] = mec to edgesLeavingMEC
-                        if (goal == Goal.MIN || edgesLeavingMEC.isEmpty()) U[n] = 0.0
-                    }
+                val zero = mec.all { it.isExpanded() && !rewardFunction.isTarget(it) } && (goal == Goal.MIN || edgesLeavingMEC.isEmpty())
+                for (n in mec) {
+                    merged[n] = mec to edgesLeavingMEC
+                    if (zero) U[n] = 0.0
                 }
                 revisitedNodes.removeAll(mec)
             }
@@ -131,7 +135,11 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
         return U
     }
 
+    /**
+     * Computes the maximal end-component containing the specified node.
+     */
     private fun findMEC(root: N, game: StochasticGame<N, A>): Set<N> {
+        //TODO: can this and VISolverComponents::computeMECs be merged?
 
         fun findSCC(
             root: N,

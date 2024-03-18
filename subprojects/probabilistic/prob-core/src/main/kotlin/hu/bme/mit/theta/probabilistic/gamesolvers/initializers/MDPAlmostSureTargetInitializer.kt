@@ -34,7 +34,7 @@ class MDPAlmostSureTargetInitializer<N, A>(
         val canReachTarget = materialized.getAllNodes().filter(::isMaterializedTarget).toMutableSet()
         var lastExtension: Collection<ExplicitStochasticGame.Node> = canReachTarget
         do {
-            lastExtension = lastExtension.flatMap { it.predecessors }.minus(canReachTarget)
+            lastExtension = lastExtension.flatMap { it.predecessors.filter { it !in canReachTarget } }.distinct()
         } while (canReachTarget.addAll(lastExtension))
         if(goal==Goal.MIN) {
             var lastRemoved = canReachTarget.filter { it.outgoingEdges.any {it.end.support.none { it in canReachTarget } } }

@@ -55,12 +55,13 @@ fun <N, A> bellmanStep(
     goal: (Int) -> Goal,
     rewardFunction: GameRewardFunction<N, A>,
     discountFactor: Double = 1.0,
-    gaussSeidel: Boolean = false
+    gaussSeidel: Boolean = false,
+    unknownNodes: Collection<N> = game.getAllNodes()
 ): StepResult<N> {
     val res = HashMap(currValues)
     val v = if(gaussSeidel) res else currValues
     var maxChange = 0.0
-    for (node in game.getAllNodes()) {
+    for (node in unknownNodes) {
         val newValue =
             rewardFunction.getStateReward(node) +
             discountFactor * (goal(game.getPlayer(node)).select(actionValues(game, v, node, rewardFunction).values) ?: 0.0)
@@ -460,7 +461,7 @@ fun almostSureMinForMDP(
     val S = (0 until numNodes)
 
     // Computing T = {s \in S | P^max(t |= [](!target)) = 1}
-    val T = S.toMutableList()
+    val T = S.toMutableSet()
 
     fun removeState(s: Int) {
         if(s !in T) return
@@ -481,9 +482,9 @@ fun almostSureMinForMDP(
     targets.forEach(::removeState)
 
     // results = complement of the set of states that can reach T via a path fragment through (S minus B)"
-    var newlyAdded: List<Int> = T
+    var newlyAdded: Set<Int> = T
     do {
-        newlyAdded = newlyAdded.flatMap { pre[it].map { it.first }.filter { it !in targets && it !in T } }
+        newlyAdded = newlyAdded.flatMap { pre[it].map { it.first }.filter { it !in targets && it !in T } }.toSet()
         T.addAll(newlyAdded)
     } while (newlyAdded.isNotEmpty())
 

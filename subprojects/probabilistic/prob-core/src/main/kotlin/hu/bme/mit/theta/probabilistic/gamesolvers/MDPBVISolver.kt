@@ -126,9 +126,12 @@ class MDPBVISolver<N, A>(
             if(it.edges.isEmpty()) min(it.reward, it.origNodes.maxOf { initializer.initialUpperBound(it) })
             else it.origNodes.maxOf { initializer.initialUpperBound(it) }
         }
+        val unknownNodes = mergedGameNodes.filter { uCurr[it]!! - lCurr[it]!! > threshold }.toMutableList()
         do {
-            lCurr = bellmanStep(mergedGame, lCurr, {initGoal}, mergedRewardFunction).result
-            uCurr = bellmanStep(mergedGame, uCurr, {initGoal}, mergedRewardFunction).result
+            lCurr = bellmanStep(mergedGame, lCurr, {initGoal}, mergedRewardFunction, unknownNodes = unknownNodes).result
+            uCurr = bellmanStep(mergedGame, uCurr, {initGoal}, mergedRewardFunction, unknownNodes = unknownNodes).result
+            // TODO: it'd be more efficient to do this during the update
+            unknownNodes.removeAll { uCurr[it]!!-lCurr[it]!! < threshold }
         } while (uCurr[mergedInit]!!-lCurr[mergedInit]!! > threshold)
 
         return RangeSolution(

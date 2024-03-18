@@ -30,9 +30,10 @@ class VISolver<N, A>(
 
         val allNodes = game.getAllNodes() // This should result in an exception if the game is infinite
         var curr = allNodes.associateWith { initializer.initialLowerBound(it) }
+        val unknownNodes = allNodes.filterNot(initializer::isKnown)
         do {
             val stepResult =
-                bellmanStep(game, curr, goal, rewardFunction, analysisTask.discountFactor, useGS)
+                bellmanStep(game, curr, goal, rewardFunction, analysisTask.discountFactor, useGS, unknownNodes)
             val maxChange = stepResult.maxChange
             curr = stepResult.result
         } while (maxChange > tolerance)

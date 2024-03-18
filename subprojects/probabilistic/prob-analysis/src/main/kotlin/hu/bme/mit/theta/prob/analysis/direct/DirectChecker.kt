@@ -17,7 +17,6 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTarg
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
 import java.util.*
 import java.util.concurrent.TimeUnit
-import kotlin.math.min
 
 typealias DirectCheckerNode<S, A> = DirectChecker<S, A>.DirectCheckerMDP.NodeClass
 class DirectChecker<S: State, A: StmtAction>(
@@ -48,7 +47,8 @@ class DirectChecker<S: State, A: StmtAction>(
                 it.isTargetNode
             }
         val initializer =
-            if(useQualitativePreprocessing) MDPAlmostSureTargetInitializer(game, goal, DirectCheckerNode<S, A>::isTargetNode)
+            if(useQualitativePreprocessing)
+                MDPAlmostSureTargetInitializer(game, goal, DirectCheckerNode<S, A>::isTargetNode)
             else TargetSetLowerInitializer {
                 it.isTargetNode
             }
@@ -63,6 +63,9 @@ class DirectChecker<S: State, A: StmtAction>(
             timer.start()
         }
 
+        if(initializer.isKnown(game.initNode)) {
+            println("Precomputation sufficient, result: ${initializer.initialLowerBound(game.initNode)}")
+        }
         val quantSolver = mdpSolverSupplier(rewardFunction, initializer)
 
         val analysisTask = AnalysisTask(game, {goal})
@@ -85,6 +88,11 @@ class DirectChecker<S: State, A: StmtAction>(
         val initNode = NodeClass(initState)
         val waitlist: Queue<NodeClass> = ArrayDeque<NodeClass>().apply { add(initNode) }
         val reachedSet = hashMapOf(initState to initNode)
+
+        override fun materialize(): Pair<ExplicitStochasticGame, Map<NodeClass, ExplicitStochasticGame.Node>> {
+            getAllNodes() //forces full exploration to make sure all nodes have been expanded
+            return super.materialize()
+        }
 
         override val initialNode: NodeClass
             get() = initNode

@@ -1,14 +1,13 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers
 
-import hu.bme.mit.theta.probabilistic.*
-import kotlin.collections.List
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
-import kotlin.collections.HashSet
-import kotlin.math.abs
+import hu.bme.mit.theta.probabilistic.GameRewardFunction
+import hu.bme.mit.theta.probabilistic.Goal
+import hu.bme.mit.theta.probabilistic.StochasticGame
+import hu.bme.mit.theta.probabilistic.equals
+import java.util.*
 import java.util.ArrayDeque
 import kotlin.collections.*
-import java.util.*
+import kotlin.math.abs
 
 data class StepResult<N>(
     val result: Map<N, Double>,
@@ -378,7 +377,8 @@ fun almostSureMaxForMDP(
         val R = ArrayList(U)
         while (R.isNotEmpty()) {
             val u = R.removeLast()
-            for ((t, alpha) in pre[u]) {
+            val preu = ArrayList(pre[u])
+            for ((t, alpha) in preu) {
                 if(t in U) continue
                 for (i in modifiedActionResults[t][alpha]) {
                     pre[i].remove(Pair(t, alpha))
@@ -463,11 +463,17 @@ fun almostSureMinForMDP(
     val T = S.toMutableList()
 
     fun removeState(s: Int) {
-        T.remove(s)
-        for ((u, beta) in pre[s]) {
-            modifiedActionResults[u][beta] = emptyList()
-            if(modifiedActionResults.all { it.isEmpty() }) {
-                removeState(u)
+        if(s !in T) return
+        val toRemove = ArrayDeque<Int>()
+        toRemove.push(s)
+        while (toRemove.isNotEmpty()) {
+            val i = toRemove.pop()
+            T.remove(i)
+            for ((u, beta) in pre[i]) {
+                modifiedActionResults[u][beta] = emptyList()
+                if (modifiedActionResults[u].all { it.isEmpty() } && u !in toRemove && u in T) {
+                    toRemove.push(u)
+                }
             }
         }
     }

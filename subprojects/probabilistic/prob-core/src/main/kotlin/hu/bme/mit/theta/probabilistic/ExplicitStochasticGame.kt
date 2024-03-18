@@ -5,7 +5,6 @@ import hu.bme.mit.theta.common.visualization.Graph
 import hu.bme.mit.theta.common.visualization.NodeAttributes
 import hu.bme.mit.theta.common.visualization.Shape
 import java.awt.Color
-import java.util.IdentityHashMap
 
 class ExplicitStochasticGame private constructor(
     preNodes: List<Builder.Node>,
@@ -23,8 +22,8 @@ class ExplicitStochasticGame private constructor(
     inner class Node(
         val player: Int, val name: String
     ) {
-        val outgoingEdges get() = this@ExplicitStochasticGame.outgoingEdges[this]!!
-        val predecessors get() = this@ExplicitStochasticGame.predecessors[this]!!
+        val outgoingEdges get() = this@ExplicitStochasticGame.outgoingEdges[this] ?: listOf()
+        val predecessors get() = this@ExplicitStochasticGame.predecessors[this] ?: listOf()
     }
 
     private val nodes: Collection<Node>

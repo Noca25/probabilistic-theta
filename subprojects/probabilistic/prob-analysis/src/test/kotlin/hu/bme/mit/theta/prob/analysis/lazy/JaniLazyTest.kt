@@ -21,7 +21,7 @@ class JaniLazyTest {
     @Test
     fun runOne() {
         val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\consensus\\consensus.2.jani")
-        //val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\blocksworld\\blocksworld.10.jani")
+        //val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\blocksworld\\blocksworld.5.jani")
         println(f.fileName)
         val model = JaniModelMapper().readValue(f.toFile(), Model::class.java).toSMDP(
             mapOf(
@@ -35,12 +35,11 @@ class JaniLazyTest {
         for (property in model.properties) {
             if (property is SMDPProperty.ProbabilityProperty || property is SMDPProperty.ProbabilityThresholdProperty) {
                 val task = extractSMDPTask(property)
-                if (task.goal == Goal.MIN) continue
                 if (true) {
                     val directChecker = SMDPDirectChecker(
                         solver = solver,
                         verboseLogging = true,
-                        useQualitativePreprocessing = false
+                        useQualitativePreprocessing = true
                     )
                     val directResult = directChecker.check(
                         model, task,
@@ -53,8 +52,8 @@ class JaniLazyTest {
 //                        }
                     )
                     println("${property.name}: $directResult")
-                    break
                 } else {
+                    if (task.goal == Goal.MIN) continue
                     val result = SMDPLazyChecker(
                         smtSolver = solver,
                         itpSolver = itpSolver,

@@ -624,10 +624,10 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             L = Lnew
         }
         println(
-            "final stats: " +
-            "nodes: ${reachedSet.size}, non-covered: ${reachedSet.filterNot { it.isCovered }.size}, " +
-                    " real covers: ${reachedSet.filter { it.isCovered && it.coveringNode!!.sc != it.sc }.size} " +
-            "[${L[initNode]}, ${U[initNode]}], d=${U[initNode]!! - L[initNode]!!}"
+            "All nodes: ${reachedSet.size}\n" +
+                    "Non-covered nodes: ${reachedSet.filterNot { it.isCovered }.size}\n" +
+                    "Real covers: ${reachedSet.filter { it.isCovered && it.coveringNode!!.sc != it.sc }.size}\n" +
+            "Result range: [${L[initNode]}, ${U[initNode]}], d=${U[initNode]!! - L[initNode]!!}"
         )
         timer.stop()
         println("Total time (ms): ${timer.elapsed(TimeUnit.MILLISECONDS)}")

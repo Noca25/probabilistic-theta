@@ -100,6 +100,8 @@ class JaniCLI : CliktCommand() {
                 if (task.goal == Goal.MIN && (domain != NONE && approximation != Approximation.EXACT))
                     throw RuntimeException("Error: Approximate computation for MIN property ${prop.name} unsupported")
 
+                val preproc = if(algorithm == Algorithm.BRTDP) false else preproc
+
                 val lazyChecker = SMDPLazyChecker(
                     solver,
                     itpSolver,

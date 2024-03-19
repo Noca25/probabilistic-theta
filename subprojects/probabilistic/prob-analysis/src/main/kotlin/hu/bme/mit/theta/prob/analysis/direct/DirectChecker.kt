@@ -70,7 +70,6 @@ class DirectChecker<S: State, A: StmtAction>(
         val quantSolver = mdpSolverSupplier(rewardFunction, initializer)
 
         val analysisTask = AnalysisTask(game, {goal})
-        println("All nodes: ${game.reachedSet.size}")
         val values = quantSolver.solve(analysisTask)
 
         timer.stop()

@@ -42,8 +42,16 @@ public final class ImmutableValuation extends Valuation {
 		private static final ImmutableValuation EMPTY = new Builder().build();
 	}
 
+	private final int hashCode;
+
 	private ImmutableValuation(final Builder builder) {
 		declToExpr = builder.builder.build();
+		hashCode = super.hashCode();
+	}
+
+	@Override
+	public int hashCode() {
+		return hashCode;
 	}
 
 	public static ImmutableValuation copyOf(final Valuation val) {

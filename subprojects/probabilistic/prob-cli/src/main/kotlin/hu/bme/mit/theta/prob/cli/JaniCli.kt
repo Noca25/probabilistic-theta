@@ -17,6 +17,7 @@ import hu.bme.mit.theta.prob.analysis.jani.toSMDP
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm
 import hu.bme.mit.theta.prob.cli.JaniCLI.Domain.*
+import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.probabilistic.gamesolvers.*
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import kotlin.io.path.Path
@@ -38,7 +39,7 @@ class JaniCLI : CliktCommand() {
     )
     val threshold by option(
         help = "Threshold used for convergence checking."
-    ).double().default(1e-7)
+    ).double().default(1e-6)
     val algorithm by option(
         help = "MDP solver algorithm to use."
     ).enum<Algorithm>().default(Algorithm.BVI)
@@ -95,6 +96,10 @@ class JaniCLI : CliktCommand() {
                         println("Error: property ${prop.name} unsupported, moving on")
                         continue
                     }
+
+                if (task.goal == Goal.MIN && (domain != NONE && approximation != Approximation.EXACT))
+                    throw RuntimeException("Error: Approximate computation for MIN property ${prop.name} unsupported")
+
                 val lazyChecker = SMDPLazyChecker(
                     solver,
                     itpSolver,

@@ -371,7 +371,7 @@ fun almostSureMaxForMDP(
     U.removeAll(targets)
     var lastRemoved = targets
     do {
-        lastRemoved = lastRemoved.flatMap { pre[it].map { it.first } }
+        lastRemoved = lastRemoved.flatMap { pre[it].map { it.first }.filter { it in U } }.distinct()
     } while (U.removeAll(lastRemoved))
 
     do {
@@ -409,7 +409,7 @@ fun almostSureMaxForMDP(
         U.removeAll(targets)
         lastRemoved = targets
         do {
-            lastRemoved = lastRemoved.flatMap { pre[it].map { it.first } }
+            lastRemoved = lastRemoved.flatMap { pre[it].map { it.first }.filter { it in U } }.distinct()
         } while (U.removeAll(lastRemoved))
     } while (U.isNotEmpty())
 

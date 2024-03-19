@@ -20,47 +20,7 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerIni
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.collections.ArrayDeque
-import kotlin.collections.ArrayList
-import kotlin.collections.Collection
-import kotlin.collections.HashMap
-import kotlin.collections.HashSet
-import kotlin.collections.List
-import kotlin.collections.Map
-import kotlin.collections.MutableList
-import kotlin.collections.Set
-import kotlin.collections.all
-import kotlin.collections.any
-import kotlin.collections.arrayListOf
-import kotlin.collections.associate
-import kotlin.collections.associateWith
-import kotlin.collections.contains
-import kotlin.collections.distinct
-import kotlin.collections.filter
-import kotlin.collections.filterNot
-import kotlin.collections.filterValues
-import kotlin.collections.first
-import kotlin.collections.flatMap
-import kotlin.collections.forEach
-import kotlin.collections.get
-import kotlin.collections.getValue
-import kotlin.collections.hashMapOf
-import kotlin.collections.hashSetOf
-import kotlin.collections.isNotEmpty
-import kotlin.collections.last
-import kotlin.collections.listOf
-import kotlin.collections.map
-import kotlin.collections.maxByOrNull
-import kotlin.collections.none
-import kotlin.collections.plus
-import kotlin.collections.random
-import kotlin.collections.reversed
 import kotlin.collections.set
-import kotlin.collections.setOf
-import kotlin.collections.sumOf
-import kotlin.collections.toList
-import kotlin.collections.toMutableMap
-import kotlin.collections.toSet
-import kotlin.collections.withIndex
 import kotlin.math.min
 import kotlin.random.Random
 
@@ -1153,13 +1113,13 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     ): Double {
         val parg = PARG(initNode, reachedSet)
         val rewardFunction = TargetRewardFunction<Node, PARGAction> { it.isErrorNode && !it.isCovered }
-        val initilizer =
+        val initializer =
             if(useQualitativePreprocessing)
                 MDPAlmostSureTargetInitializer(parg, goal) { it.isErrorNode && !it.isCovered }
             else TargetSetLowerInitializer { it.isErrorNode && !it.isCovered }
         val quantSolver =
-            if(useBVI) MDPBVISolver(rewardFunction, initilizer, threshold)
-            else VISolver(rewardFunction, initilizer, threshold, useGS = false)
+            if(useBVI) MDPBVISolver(rewardFunction, initializer, threshold)
+            else VISolver(rewardFunction, initializer, threshold, useGS = false)
         val analysisTask = AnalysisTask(parg, { goal })
         val nodes = parg.getAllNodes()
         println("All nodes: ${nodes.size}")

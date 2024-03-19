@@ -17,10 +17,8 @@ package hu.bme.mit.theta.core.model;
 
 import static hu.bme.mit.theta.core.type.abstracttype.AbstractExprs.Eq;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import hu.bme.mit.theta.common.Utils;
 import hu.bme.mit.theta.core.decl.Decl;
@@ -76,7 +74,9 @@ public abstract class Valuation implements Substitution {
 
 	@Override
 	public int hashCode() {
-		return HASH_SEED * 31 + toMap().hashCode();
+		var l = List.copyOf(toMap().entrySet()).stream().sorted(Comparator.comparing((e)->e.getKey().getName())).collect(Collectors.toList());
+		return HASH_SEED * 31 + l.hashCode();
+		//return HASH_SEED * 31 + toMap().hashCode();
 	}
 
 	@Override

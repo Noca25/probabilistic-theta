@@ -46,12 +46,6 @@ class DirectChecker<S: State, A: StmtAction>(
             TargetRewardFunction<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>> {
                 it.isTargetNode
             }
-        val initializer =
-            if(useQualitativePreprocessing)
-                MDPAlmostSureTargetInitializer(game, goal, DirectCheckerNode<S, A>::isTargetNode)
-            else TargetSetLowerInitializer {
-                it.isTargetNode
-            }
 
         val timer = Stopwatch.createStarted()
         if(measureExplorationTime) {
@@ -62,6 +56,13 @@ class DirectChecker<S: State, A: StmtAction>(
             timer.reset()
             timer.start()
         }
+
+        val initializer =
+            if(useQualitativePreprocessing)
+                MDPAlmostSureTargetInitializer(game, goal, DirectCheckerNode<S, A>::isTargetNode)
+            else TargetSetLowerInitializer {
+                it.isTargetNode
+            }
 
         if(initializer.isKnown(game.initNode)) {
             println("Precomputation sufficient, result: ${initializer.initialLowerBound(game.initNode)}")
@@ -98,6 +99,7 @@ class DirectChecker<S: State, A: StmtAction>(
             get() = initNode
 
         override fun getAllNodes(): Collection<NodeClass> {
+
             while (!waitlist.isEmpty()) {
                 val node = waitlist.remove()
                 if(!node.isTargetNode) {

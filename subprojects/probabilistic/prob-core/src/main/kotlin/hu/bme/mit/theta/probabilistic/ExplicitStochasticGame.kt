@@ -173,9 +173,10 @@ class ExplicitStochasticGame private constructor(
          * Adds a new node to the game. The name must be unique among all nodes in the builder.
          */
         fun addNode(name: String, player: Int): Node {
-            require(!preNodes.any { it.name == name }) {
+            //TODO: use a more efficient version of checking this precondition (e.g. maintain a *set* of names)
+            /*require(!preNodes.any { it.name == name }) {
                 "Node name must be unique - another node with name $name already exists!"
-            }
+            }*/
             return Node(name, player).apply(preNodes::add)
         }
 

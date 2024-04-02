@@ -8,6 +8,7 @@ import hu.bme.mit.theta.common.logging.Logger
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
 import hu.bme.mit.theta.core.type.booltype.BoolType
+import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
@@ -19,7 +20,6 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTarg
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
 import java.util.*
 import java.util.concurrent.TimeUnit
-import kotlin.collections.ArrayDeque
 import kotlin.collections.set
 import kotlin.math.min
 import kotlin.random.Random
@@ -219,6 +219,25 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             val toblock =
                 if (negate) Not(c.guard)
                 else c.guard
+
+            if(useSeq) strengthenWithSeq(toblock)
+            else {
+                val modifiedAbstract = domain.block(sa, toblock, sc)
+                changeAbstractLabel(modifiedAbstract)
+            }
+        }
+
+        fun strengthenAgainstCommands(
+            negatedCommands: List<ProbabilisticCommand<A>>,
+            nonNegatedCommands: List<ProbabilisticCommand<A>>
+        ) {
+//            negatedCommands.forEach{strengthenAgainstCommand(it, true)}
+//            nonNegatedCommands.forEach{strengthenAgainstCommand(it, false)}
+//            return
+
+            val toblock =
+                SmartBoolExprs.Or(
+                negatedCommands.map { Not(it.guard) } + nonNegatedCommands.map { it.guard })
 
             if(useSeq) strengthenWithSeq(toblock)
             else {
@@ -456,7 +475,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         waitlist.add(initNode)
 
-        val reachedSet = arrayListOf(initNode)
+        val reachedSet = hashSetOf(initNode)
+        val scToNode = hashMapOf(initNode.sc to arrayListOf(initNode))
         var U = hashMapOf(initNode to 1.0)
         var L = hashMapOf(initNode to 0.0)
 
@@ -522,8 +542,13 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                         // treating each node as its own EC at first so that value computations can be done
                         // solely based on the _merged_ map
                         merged[newNode] = setOf(newNode) to newNode.getOutgoingEdges()
-                        close(newNode, reachedSet)
+                        close(newNode, reachedSet, scToNode)
                         reachedSet.add(newNode)
+                        if(newNode.sc in scToNode) {
+                            scToNode[newNode.sc]!!.add(newNode)
+                        } else {
+                            scToNode[newNode.sc] = arrayListOf(newNode)
+                        }
                         if (newNode.isCovered) {
                             newCovered.add(newNode)
                             U[newNode] = U.getOrDefault(newNode.coveringNode!!, 1.0)
@@ -655,6 +680,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         waitlist.add(initNode)
 
         val reachedSet = arrayListOf(initNode)
+        val scToNode = hashMapOf(initNode.sc to arrayListOf(initNode))
         var UFull = hashMapOf(initNode to 1.0)
         var LFull = hashMapOf(initNode to 0.0)
         var UTrapped = hashMapOf(initNode to 1.0)
@@ -743,8 +769,13 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                         mergedFull[newNode] = setOf(newNode) to newNode.getOutgoingEdges() //this should always be empty
                         mergedTrapped[newNode] = setOf(newNode) to newNode.getOutgoingEdges()
                             .filter { it.surelyEnabled } //this will be "even more empty" should always be empty
-                        close(newNode, reachedSet)
+                        close(newNode, reachedSet, scToNode)
                         reachedSet.add(newNode)
+                        if(newNode.sc in scToNode) {
+                            scToNode[newNode.sc]!!.add(newNode)
+                        } else {
+                            scToNode[newNode.sc] = arrayListOf(newNode)
+                        }
                         if (newNode.isCovered) {
                             checkForMEC.add(newNode)
                             UFull[newNode] = UFull[newNode.coveringNode]!!//UFull.getOrDefault(newNode.coveringNode!!, 1.0)
@@ -968,7 +999,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
     fun fullyExpanded(
         useBVI: Boolean = false,
-        threshold: Double
+        threshold: Double,
+        timeout: Int = 0
     ): Double {
         reset()
         val timer = Stopwatch.createStarted()
@@ -976,9 +1008,12 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         waitlist.add(initNode)
 
-        val reachedSet = arrayListOf(initNode)
+        val reachedSet = hashSetOf(initNode)
+        val scToNode = hashMapOf(initNode.sc to arrayListOf(initNode))
 
         while (!waitlist.isEmpty()) {
+            if(timeout != 0 && timer.elapsed(TimeUnit.MILLISECONDS) > timeout)
+                throw RuntimeException("Timeout")
             val n = waitlist.removeFirst()
             val newNodes = expand(
                 n,
@@ -986,7 +1021,12 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                 getErrorCommands(n.sc),
             )
             for (newNode in newNodes) {
-                close(newNode, reachedSet)
+                close(newNode, reachedSet, scToNode)
+                if(newNode.sc in scToNode) {
+                    scToNode[newNode.sc]!!.add(newNode)
+                } else {
+                    scToNode[newNode.sc] = arrayListOf(newNode)
+                }
                 if (!newNode.isCovered) {
                     waitlist.addFirst(newNode)
                 }
@@ -1000,7 +1040,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         timer.reset()
         timer.start()
         val errorProb =
-            if(useGameRefinement) computeErrorProbWithRefinement(initNode, reachedSet, useBVI, threshold, threshold)
+            if(useGameRefinement) computeErrorProbWithRefinement(initNode, reachedSet,scToNode, useBVI, threshold, threshold)
             else computeErrorProb(initNode, reachedSet, useBVI, threshold)
         timer.stop()
         val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
@@ -1017,6 +1057,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         val children = arrayListOf<Node>()
 
+        val negatedCommands = arrayListOf<ProbabilisticCommand<A>>()
+        val nonNegatedCommands = arrayListOf<ProbabilisticCommand<A>>()
         for (cmd in errorCommands) {
             if (domain.isEnabled(n.sc, cmd)) {
                 n.markAsErrorNode()
@@ -1026,7 +1068,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
                 return children // keep error nodes absorbing
             } else if (useMay && domain.mayBeEnabled(n.sa, cmd)) {
-                n.strengthenAgainstCommand(cmd, false)
+                //n.strengthenAgainstCommand(cmd, false)
+                nonNegatedCommands.add(cmd)
             }
         }
         for (cmd in stdCommands) {
@@ -1038,7 +1081,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                     a to newNode
                 }
                 if(useMust && !domain.mustBeEnabled(n.sa, cmd)) {
-                    n.strengthenAgainstCommand(cmd, true)
+                    //n.strengthenAgainstCommand(cmd, true)
+                    negatedCommands.add(cmd)
                 }
 
                 val surelyEnabled =
@@ -1049,22 +1093,31 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
                 n.createEdge(target, cmd.guard, surelyEnabled, cmd)
             } else if (useMay && domain.mayBeEnabled(n.sa, cmd)) {
-                n.strengthenAgainstCommand(cmd, false)
+                //n.strengthenAgainstCommand(cmd, false)
+                nonNegatedCommands.add(cmd)
             }
         }
+        if(negatedCommands.isNotEmpty() || nonNegatedCommands.isNotEmpty())
+            n.strengthenAgainstCommands(negatedCommands, nonNegatedCommands)
 
         n.isExpanded = true
 
         return children
     }
 
-    private fun close(node: Node, reachedSet: Collection<Node>) {
-        for (otherNode in reachedSet) {
+    private fun close(node: Node, reachedSet: Collection<Node>, scToNode: Map<SC, List<Node>>) {
+        /*for (otherNode in reachedSet) {
             if (otherNode.sc == node.sc) {
                 node.coverWith(otherNode)
                 node.strengthenForCovering()
                 return
             }
+        }*/
+        scToNode[node.sc]?.let {
+            val otherNode = it.first()
+            node.coverWith(otherNode)
+            node.strengthenForCovering()
+            return
         }
         for (otherNode in reachedSet) {
             if (!otherNode.isCovered && domain.checkContainment(node.sc, otherNode.sa)) {
@@ -1111,8 +1164,10 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         useBVI: Boolean,
         threshold: Double
     ): Double {
+
         val parg = PARG(initNode, reachedSet)
         val rewardFunction = TargetRewardFunction<Node, PARGAction> { it.isErrorNode && !it.isCovered }
+        val timer = Stopwatch.createStarted()
         val initializer =
             if(useQualitativePreprocessing)
                 MDPAlmostSureTargetInitializer(parg, goal) { it.isErrorNode && !it.isCovered }
@@ -1120,11 +1175,25 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         val quantSolver =
             if(useBVI) MDPBVISolver(rewardFunction, initializer, threshold)
             else VISolver(rewardFunction, initializer, threshold, useGS = false)
+
         val analysisTask = AnalysisTask(parg, { goal })
         val nodes = parg.getAllNodes()
         println("All nodes: ${nodes.size}")
         println("Non-covered nodes: ${nodes.filter { !it.isCovered }.size}")
+
+        if(initializer.isKnown(parg.initialNode)) {
+            timer.stop()
+            val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
+            println("Precomputation sufficient, result: ${initializer.initialLowerBound(parg.initialNode)}")
+            println("Probability computation time (ms): $probTime")
+            return initializer.initialLowerBound(parg.initialNode)
+        }
+
         val values = quantSolver.solve(analysisTask)
+        timer.stop()
+        val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
+        println("Probability computation time (ms): $probTime")
+
         return values[initNode]!!
     }
 
@@ -1153,7 +1222,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
     private fun computeErrorProbWithRefinement(
         initNode: Node,
-        reachedSet: MutableList<Node>,
+        reachedSet: MutableSet<Node>,
+        scToNode: MutableMap<SC, ArrayList<Node>>,
         useBVI: Boolean,
         innerThreshold: Double,
         outerThreshold: Double
@@ -1223,7 +1293,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             if(upperValues[initNode]!! - lowerValues[initNode]!! < outerThreshold)
                 return (upperValues[initNode]!! + lowerValues[initNode]!!)/2
 
-            refineMenuGame(reachedSet, lowerValues, upperValues)
+            refineMenuGame(reachedSet, scToNode, lowerValues, upperValues, trappedReachable(initNode))
             parg = PARG(initNode, reachedSet)
             trappedParg = TrappedPARG(initNode, reachedSet)
             baseFullInitializer =
@@ -1237,12 +1307,42 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         }
     }
 
+    private fun trappedReachable(initNode: Node): Collection<Node> {
+        // TODO: cache/compute iteratively
+        val res = hashSetOf(initNode)
+        val waitlist: Queue<Node> = ArrayDeque()
+        waitlist.add(initNode)
+        while (!waitlist.isEmpty()) {
+            val node = waitlist.remove()
+            if (node.isCovered) {
+                if (node.coveringNode !in res) {
+                    res.add(node.coveringNode!!)
+                    waitlist.add(node.coveringNode)
+                }
+            } else {
+                for (edge in node.getOutgoingEdges()) {
+                    if (!edge.surelyEnabled) continue
+                    for ((_, child) in edge.targetList) {
+                        if (child !in res) {
+                            res.add(child)
+                            waitlist.add(child)
+                        }
+                    }
+                }
+            }
+        }
+        return res
+    }
+
     fun refineMenuGame(
-        reachedSet: MutableList<Node>,
+        reachedSet: MutableSet<Node>,
+        scToNode: MutableMap<SC, ArrayList<Node>>,
         lowerValues: Map<Node, Double>,
         upperValues: Map<Node, Double>,
+        allowedNodes: Collection<Node>
     ) {
-        val maxDiffNode = reachedSet.filter { it.getOutgoingEdges().any {!it.surelyEnabled} }.maxByOrNull {
+        require(allowedNodes.isNotEmpty())
+        val maxDiffNode = allowedNodes.filter { it.getOutgoingEdges().any {!it.surelyEnabled} }.maxByOrNull {
             upperValues[it]!! - lowerValues[it]!!
         }!!
         println("Refined node: ${maxDiffNode.id}")
@@ -1260,7 +1360,12 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                 getErrorCommands(n.sc),
             )
             for (newNode in newNodes) {
-                close(newNode, reachedSet)
+                close(newNode, reachedSet, scToNode)
+                if(newNode.sc in scToNode) {
+                    scToNode[newNode.sc]!!.add(newNode)
+                } else {
+                    scToNode[newNode.sc] = arrayListOf(newNode)
+                }
                 if (!newNode.isCovered) {
                     waitlist.addFirst(newNode)
                 }

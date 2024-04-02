@@ -184,7 +184,7 @@ fun <N, A> deflate(
 fun <N, A> computeMECs(
     game: StochasticGame<N, A>,
     allowedActions: (N) -> Collection<A> = game::getAvailableActions
-): List<List<N>> {
+): List<Set<N>> {
     // Iterative computation using SCCs:
     // - the iteration starts with all actions allowed
     // - in each iteration, the strongly connected components are computed with the currently allowed actions
@@ -238,7 +238,7 @@ fun <N, A> computeMECs(
 fun <N, A> computeSCCs(
     game: StochasticGame<N, A>,
     allowedActions: (N) -> Collection<A>
-): List<List<N>> {
+): List<Set<N>> {
     val ergEdges = arrayListOf<List<Int>>()
     val nodes = game.getAllNodes().toList()
     val idx = nodes.withIndex().associate { it.value to it.index }
@@ -248,17 +248,18 @@ fun <N, A> computeSCCs(
             actions.flatMap { game.getResult(node, it).support.map { idx[it]!! } }.distinct()
         )
     }
-    return computeSCCs(ergEdges, nodes.size).map { it.map { nodes[it] } }
+    val sccs = computeSCCs(ergEdges, nodes.size)
+    return sccs.map { it.map { nodes[it] }.toSet() }
 }
 
 /**
  * Computes the strongly connected components of a directed graph, given by edge lists. A single node is an SCC can be
  * an SCC by itself even if it does not have a self-loop.
- * @param edges: the nth element gives the ends of edges leaving the nth node
+ * @param outEdgeList: the nth element gives the ends of edges leaving the nth node
  * @param numNodes: number of nodes in the graph (all numbers in the edge list must be less than this number)
  */
 fun computeSCCs(
-    edges: List<List<Int>>,
+    outEdgeList: List<List<Int>>,
     numNodes: Int
 ): ArrayList<Set<Int>> {
     // The computation uses the Kosaraju algorithm
@@ -268,7 +269,7 @@ fun computeSCCs(
     L.ensureCapacity(numNodes)
 
     //DFS to push every vertex onto L in their DFS *completion* order
-    val E = edges
+    val E = outEdgeList
 
     val dfsstack = Stack<Int>()
     dfsstack.ensureCapacity(numNodes)
@@ -279,6 +280,10 @@ fun computeSCCs(
         dfsstack.push(i)
         while (!dfsstack.empty()) {
             val u = dfsstack.peek()
+//            if(visited[u]) {
+//                dfsstack.pop()
+//                continue
+//            }
             visited[u] = true
             var completed = true
             for (v in E[u]) {
@@ -314,7 +319,7 @@ fun computeSCCs(
             scc.add(v)
             assigned[v] = true
             for (w in EInv[v]) {
-                if (!assigned[w]) q.add(w)
+                if (!assigned[w] && w !in q) q.add(w)
             }
         }
         SCCs.add(scc)
@@ -385,7 +390,7 @@ fun almostSureMaxForMDP(
                     pre[i].remove(Pair(t, alpha))
                 }
                 modifiedActionResults[t][alpha] = emptyList()
-                if(modifiedActionResults.any { it.isNotEmpty() }) {
+                if(modifiedActionResults.all { it.isEmpty() }) {
                     R.add(t)
                     U.add(t)
                 }

@@ -16,8 +16,8 @@ class MDPAlmostSureTargetInitializer<N, A>(
     val isTarget: (N) -> Boolean
 ) : SGSolutionInitializer<N, A> {
 
-    private val sureAvoiding = arrayListOf<N>()
-    private val almostSureReaching = arrayListOf<N>()
+    private val sureAvoiding = hashSetOf<N>()
+    private val almostSureReaching = hashSetOf<N>()
 
     private val _materialized = mdp.materialize()
     private val materialized = _materialized.first

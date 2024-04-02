@@ -1,6 +1,5 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
-import hu.bme.mit.theta.analysis.Action
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.core.type.Expr
@@ -14,7 +13,7 @@ interface LazyDomain<SC: ExprState, SA: ExprState, A: StmtAction> {
     fun mustBeEnabled(state: SA, command: ProbabilisticCommand<A>): Boolean
     fun isEnabled(state: SC, command: ProbabilisticCommand<A>): Boolean
     fun concreteTransFunc(state: SC, action: A): SC
-    fun block(state: SA, expr: Expr<BoolType>, nextState: SC): SA
+    fun block(abstrState: SA, expr: Expr<BoolType>, concrState: SC): SA
 
     fun blockSeq(
         nodes: List<ProbLazyChecker<SC, SA, A>.Node>,

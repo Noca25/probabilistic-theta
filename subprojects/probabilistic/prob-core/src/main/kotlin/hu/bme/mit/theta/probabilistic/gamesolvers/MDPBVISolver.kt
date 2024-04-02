@@ -27,7 +27,7 @@ class MDPBVISolver<N, A>(
 
     }
 
-    private inner class MergedNode(val origNodes: List<N>, val reward: Double) {
+    private inner class MergedNode(val origNodes: Set<N>, val reward: Double) {
         val id = nextNodeId++
         val edges = arrayListOf<MergedEdge>()
         override fun hashCode(): Int {
@@ -89,7 +89,7 @@ class MDPBVISolver<N, A>(
             remainingNodes.removeAll(mec)
         }
         for (n in remainingNodes) {
-            val mergedNode = MergedNode(listOf(n), rewardFunction.getStateReward(n))
+            val mergedNode = MergedNode(setOf(n), rewardFunction.getStateReward(n))
             mergedGameMap[n] = mergedNode
             mergedGameNodes.add(mergedNode)
         }

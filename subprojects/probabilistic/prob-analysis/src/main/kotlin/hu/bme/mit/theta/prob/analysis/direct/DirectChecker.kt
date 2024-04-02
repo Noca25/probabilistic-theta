@@ -65,7 +65,12 @@ class DirectChecker<S: State, A: StmtAction>(
             }
 
         if(initializer.isKnown(game.initNode)) {
+            timer.stop()
+            val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
             println("Precomputation sufficient, result: ${initializer.initialLowerBound(game.initNode)}")
+            println("Probability computation time (ms): $probTime")
+            println("All nodes: ${game.reachedSet.size}")
+            return initializer.initialLowerBound(game.initNode)
         }
         val quantSolver = mdpSolverSupplier(rewardFunction, initializer)
 

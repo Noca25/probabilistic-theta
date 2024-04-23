@@ -19,6 +19,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -35,6 +36,11 @@ import hu.bme.mit.theta.core.type.booltype.BoolType;
  * be used to create a new instance.
  */
 public final class ImmutableValuation extends Valuation {
+	public static boolean experimental = false;
+	public static Decl<?>[] declOrder = null;
+	private int[] array;
+	private int isPresent;
+
 	private final Map<Decl<?>, LitExpr<?>> declToExpr;
 	private volatile Expr<BoolType> expr = null;
 
@@ -47,6 +53,47 @@ public final class ImmutableValuation extends Valuation {
 	private ImmutableValuation(final Builder builder) {
 		declToExpr = builder.builder.build();
 		hashCode = super.hashCode();
+
+		if(experimental && declOrder != null) {
+			isPresent = 0;
+			array = new int[declToExpr.size()];
+			var i = 0;
+			var declIdx = 0;
+			for (Decl<?> decl : declOrder) {
+				if(declToExpr.containsKey(decl)) {
+					array[i++] = declToExpr.get(decl).hashCode();
+					isPresent |= 1 << declIdx;
+				}
+				declIdx++;
+			}
+			if(i != declToExpr.size())
+				array = null;
+			//else System.out.println("yaay!");
+		} else array = null;
+	}
+
+	@Override
+	public boolean isLeq(Valuation that) {
+		if(experimental && that instanceof ImmutableValuation) {
+			ImmutableValuation that1 = (ImmutableValuation) that;
+			if (this.array == null || that1.array == null) return super.isLeq(that);
+			var thisCurr = 0;
+			var thatCurr = 0;
+			for(int i = 0; i < declOrder.length; i++) {
+				boolean thisPresent = (this.isPresent & (1 << i)) != 0;
+				boolean thatPresent = (that1.isPresent & (1 << i)) != 0;
+				if(thisPresent && thatPresent) {
+					if(array[thisCurr] != that1.array[thatCurr]) return false;
+				}
+				if (thisPresent) {
+					thisCurr += 1;
+				}
+				if (thatPresent) {
+					thatCurr += 1;
+				}
+			}
+		}
+		return super.isLeq(that);
 	}
 
 	@Override

@@ -63,7 +63,11 @@ public abstract class ExplState extends Valuation implements ExprState {
 			return true;
 		} else if (obj instanceof ExplState) {
 			final ExplState that = (ExplState) obj;
-			return this.toMap().equals(that.toMap()) && this.isBottom() == that.isBottom();
+			var thisVal = this.getVal();
+			var thatVal = that.getVal();
+			return this.isBottom() == that.isBottom() && thisVal.getDecls().equals(thatVal.getDecls()) &&
+					thisVal.getDecls().stream().allMatch((decl) -> thisVal.eval(decl).equals(thatVal.eval(decl)) );
+			//return this.toMap().equals(that.toMap()) && this.isBottom() == that.isBottom();
 		} else {
 			return false;
 		}

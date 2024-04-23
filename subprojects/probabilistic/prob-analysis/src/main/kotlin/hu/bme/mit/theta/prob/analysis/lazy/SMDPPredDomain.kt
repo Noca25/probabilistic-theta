@@ -11,6 +11,7 @@ import hu.bme.mit.theta.analysis.pred.PredState
 import hu.bme.mit.theta.core.stmt.Stmts
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
+import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
@@ -22,6 +23,7 @@ import hu.bme.mit.theta.prob.analysis.jani.SMDPState
 import hu.bme.mit.theta.prob.analysis.jani.nextLocs
 import hu.bme.mit.theta.solver.ItpSolver
 import hu.bme.mit.theta.solver.Solver
+import hu.bme.mit.theta.solver.UCSolver
 import hu.bme.mit.theta.solver.utils.WithPushPop
 
 class SMDPPredDomain(
@@ -29,6 +31,7 @@ class SMDPPredDomain(
     val fullPrec: ExplPrec,
     val smtSolver: Solver,
     val itpSolver: ItpSolver,
+    val ucSolver: UCSolver,
     val useItp: Boolean = false
 ): LazyDomain<SMDPState<ExplState>, SMDPState<PredState>, SMDPCommandAction> {
     val ord = PredOrd.create(smtSolver)
@@ -38,7 +41,7 @@ class SMDPPredDomain(
             return false
 
         val res = sa.toExpr().eval(sc.domainState)
-        return if (res == BoolExprs.True()) true
+        return if (res == True()) true
         else if (res == BoolExprs.False()) false
         else throw IllegalArgumentException("concrete state must be a full valuation")
     }
@@ -123,17 +126,24 @@ class SMDPPredDomain(
         toBlockAtLast: Expr<BoolType>
     ): List<SMDPState<PredState>> {
         val seqItpChecker = ExprTraceSeqItpChecker.create(nodes.first().sc.toExpr(), toBlockAtLast, itpSolver)
+//        val nwtChecker = ExprTraceNewtonChecker.create(True(), True(), ucSolver)
+//            .withIT().withWP().withoutLV()
+//        val states = listOf(nodes.first().sc) + nodes.drop(1).map { it.sa } + nodes.last().sa
         val states = nodes.map { it.sa }
         val actions = guards.zip(actions).map { (g: Expr<BoolType>, a: SMDPCommandAction) ->
             BasicStmtAction(listOf(Stmts.Assume(g)) + a.stmts)
-        }
+        } //+ BasicStmtAction(listOf(Stmts.Assume(toBlockAtLast)))
         val trace = Trace.of(states, actions)
         val status = seqItpChecker.check(trace)
         if (status.isFeasible)
             throw RuntimeException("cannot block sequence")
         else {
-            return nodes.zip(status.asInfeasible().refutation).map { (node, itp) ->
+            return nodes.zip(status.asInfeasible().refutation
+                //.drop(1)
+                .take(nodes.size)
+            ).map { (node, itp) ->
                 val itpConjuncts = ExprUtils.getConjuncts(PathUtils.foldin(itp, 0))
+                    .map { ExprUtils.simplify(it) }
 //                    .filter {
 //                        WithPushPop(smtSolver).use { _ ->
 //                            smtSolver.add(PathUtils.unfold(node.sa.toExpr(), 0))
@@ -163,7 +173,7 @@ class SMDPPredDomain(
         SMDPState(PredState.of(), nextLocs(state.locs, action.destination))
 
     override fun isEnabled(state: SMDPState<ExplState>, command: ProbabilisticCommand<SMDPCommandAction>): Boolean {
-        return command.guard.eval(state.domainState) == BoolExprs.True()
+        return command.guard.eval(state.domainState) == True()
     }
 
     override fun concreteTransFunc(state: SMDPState<ExplState>, action: SMDPCommandAction): SMDPState<ExplState> {

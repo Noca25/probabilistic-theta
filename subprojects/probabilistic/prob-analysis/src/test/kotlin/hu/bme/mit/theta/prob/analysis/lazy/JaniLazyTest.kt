@@ -1,5 +1,6 @@
 package hu.bme.mit.theta.prob.analysis.lazy
 
+import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectChecker
 import hu.bme.mit.theta.prob.analysis.jani.SMDPProperty
 import hu.bme.mit.theta.prob.analysis.jani.extractSMDPTask
@@ -20,22 +21,26 @@ class JaniLazyTest {
 
     @Test
     fun runOne() {
+        //val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\zeroconf\\zeroconf.jani")
         val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\consensus\\consensus.2.jani")
+        //val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\csma\\csma.2-2.jani")
         //val f = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\blocksworld\\blocksworld.5.jani")
         println(f.fileName)
         val model = JaniModelMapper().readValue(f.toFile(), Model::class.java).toSMDP(
             mapOf(
-                "N" to "3", "K" to "2", "reset" to "true",
-                "delay" to "3", "deadline" to "50", "COL" to "1",
-                "ITERATIONS" to "100"
+                "N" to "3", "K" to "2", "reset" to "true", "deadline" to "10",
+//                "N" to "3", "K" to "2", "reset" to "true",
+//                "delay" to "3", "deadline" to "50", "COL" to "1",
+//                "ITERATIONS" to "100"
             )
         )
         val solver = Z3SolverFactory.getInstance().createSolver()
         val itpSolver = Z3SolverFactory.getInstance().createItpSolver()
+        val ucSolver = Z3SolverFactory.getInstance().createUCSolver()
         for (property in model.properties) {
             if (property is SMDPProperty.ProbabilityProperty || property is SMDPProperty.ProbabilityThresholdProperty) {
                 val task = extractSMDPTask(property)
-                if (true) {
+                if (false) {
                     val directChecker = SMDPDirectChecker(
                         solver = solver,
                         verboseLogging = true,
@@ -46,26 +51,40 @@ class JaniLazyTest {
                         MDPBVISolver.supplier(1e-7)
 //                        MDPBRTDPSolver.supplier(
 //                            1e-7,
-//                            SMDPDirectCheckerGame::diffBasedSelection
+//                            SMDPDirectCheckerGame::weightedRandomSelection
 //                        ) { iteration, reachedSet, linit, uinit ->
 //                            println("$iteration: ${reachedSet.size} [$linit, $uinit]")
 //                        }
                     )
                     println("${property.name}: $directResult")
                 } else {
-                    if (task.goal == Goal.MIN) continue
+                    if (task.goal == Goal.MIN) {
+                        println("MIN property skipped")
+                        continue
+                    }
+                    if(model.getAllVars().size < 30) {
+                        ImmutableValuation.experimental = true
+                        ImmutableValuation.declOrder = model.getAllVars().toTypedArray()
+                    }
+
+                    val usePred = true
+
                     val result = SMDPLazyChecker(
                         smtSolver = solver,
                         itpSolver = itpSolver,
+                        ucSolver = ucSolver,
                         algorithm = SMDPLazyChecker.Algorithm.BVI,
                         verboseLogging = true,
                         useMay = true,
-                        useMust = false,
-                        useSeq = false,
-                        useGameRefinement = true,
+                        useMust = true,
+                        useSeq = usePred,
+                        useGameRefinement = false,
                         brtdpStrategy = BRTDPStrategy.RANDOM,
-                        useQualitativePreprocessing = false
-                    ).checkExpl(model, task)
+                        useQualitativePreprocessing = true,
+                    ).let {
+                        if (usePred) it.checkPred(model, task)
+                        else it.checkExpl(model, task)
+                    }
                     println("${property.name}: $result")
                 }
             } else {
@@ -92,12 +111,13 @@ class JaniLazyTest {
                     )
                     val solver = Z3SolverFactory.getInstance().createSolver()
                     val itpSolver = Z3SolverFactory.getInstance().createItpSolver()
+                    val ucSolver = Z3SolverFactory.getInstance().createUCSolver()
                     for (property in model.properties) {
                         if (property is SMDPProperty.ProbabilityProperty) {
                             try {
                                 val task = extractSMDPTask(property)
                                 val result = SMDPLazyChecker(
-                                    solver, itpSolver, SMDPLazyChecker.Algorithm.BRTDP,
+                                    solver, itpSolver, ucSolver, SMDPLazyChecker.Algorithm.BRTDP,
                                     brtdpStrategy = BRTDPStrategy.DIFF_BASED,
                                     useMay = true, useMust = false
                                 ).checkExpl(model, task,)

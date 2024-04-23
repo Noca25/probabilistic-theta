@@ -7,6 +7,7 @@ import hu.bme.mit.theta.common.logging.ConsoleLogger
 import hu.bme.mit.theta.common.logging.Logger
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
+import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
@@ -33,8 +34,9 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
     private val domain: LazyDomain<SC, SA, A>,
 
-    // Checker Configuration
     private val goal: Goal,
+
+    // Checker Configuration
     private val useMay: Boolean = true,
     private val useMust: Boolean = false,
     private val verboseLogging: Boolean = false,
@@ -43,7 +45,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private val useMonotonicBellman: Boolean = false,
     private val useSeq: Boolean = false,
     private val useGameRefinement: Boolean = false,
-    private val useQualitativePreprocessing: Boolean = false
+    private val useQualitativePreprocessing: Boolean = false,
+    private val mergeSameSCNodes: Boolean = true
 ) {
     private var numCoveredNodes = 0
     private var numRealCovers = 0
@@ -62,11 +65,17 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
     private var nextNodeId = 0
 
+    var currReachedSet: TrieReachedSet<Node, *>? = null
+
     inner class Node(
         val sc: SC, sa: SA
     ) {
         var sa: SA = sa
-            private set
+            private set(v) {
+                val tracked = currReachedSet?.delete(this) ?: false
+                field = v
+                if(tracked) currReachedSet?.add(this)
+            }
 
         var onUncover: ((Node)->Unit)? = null
 
@@ -112,6 +121,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         private var realCovered = false
         fun coverWith(coverer: Node) {
+            require(!isCovered)
             numCoveredNodes++
             // equality checking of sc-s can be expensive if done often,
             // so we do this only if the number of real covers is logged
@@ -141,25 +151,35 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             val guards = arrayListOf<Expr<BoolType>>()
             val actions = arrayListOf<A>()
 
-            while (currNode.backEdges.isNotEmpty()) {
-                if(currNode.backEdges.size > 1)
-                    throw UnsupportedOperationException("Sequence interpolation for multiple parents not implemented yet")
+            // TODO: better handling of the init node
+            while (currNode.backEdges.isNotEmpty() && currNode.id != 0) {
+                //TODO: check that it works
+//                if(currNode.backEdges.size > 1)
+//                    throw UnsupportedOperationException("Sequence interpolation for multiple parents not implemented yet")
                 val backEdge = currNode.backEdges.first()
                 guards.add(0, backEdge.guard)
                 actions.add(0, backEdge.getActionFor(currNode))
                 currNode = backEdge.source
+                require(!nodes.contains(currNode))
                 nodes.add(0, currNode)
             }
 
             val newLabels = domain.blockSeq(nodes, guards, actions, toblock)
             val forceCovers = arrayListOf<Node>()
+
+            // As only a single path to the root can be strengthened at once, we need to deal with the other parents later
+            val secondaryParentStrengthenings = arrayListOf(this to this.backEdges.drop(1))
+
             for ((i, node) in nodes.withIndex()) {
                 if(newLabels[i] == node.sa) continue
                 node.sa = newLabels[i]
+                secondaryParentStrengthenings.add(node to node.backEdges.drop(1))
 
-                for (coveredNode in ArrayList(node.coveredNodes)) { // copy because removeCover() modifies it inside the loop
+                val cpy = ArrayList(node.coveredNodes) // copy because removeCover() modifies it inside the loop
+                for (coveredNode in cpy) {
                     if (!domain.checkContainment(coveredNode.sc, node.sa)) {
                         coveredNode.removeCover()
+                        require(coveredNode !in waitlist)
                         waitlist.add(coveredNode)
                     } else {
                         forceCovers.add(coveredNode)
@@ -170,6 +190,14 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                         it.strengthenForCovering()
                 }
             }
+
+            for ((node, inEdges) in secondaryParentStrengthenings) {
+                for (inEdge in inEdges) {
+                    val action = inEdge.getActionFor(node)
+                    val preImage = domain.preImage(node.sa, action)
+                    inEdge.source.strengthenWithSeq(Not(preImage))
+                }
+            }
         }
 
         fun changeAbstractLabel(
@@ -177,7 +205,9 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         ) {
             if (newLabel == sa) return
             sa = newLabel
-            for (coveredNode in ArrayList(coveredNodes)) { // copy because removeCover() modifies it inside the loop
+            val cpy = ArrayList(coveredNodes)
+            for (coveredNode in cpy) { // copy because removeCover() modifies it inside the loop
+                if (!coveredNode.isCovered) continue // strengthening of other covered nodes might have removed the cover
                 if (!domain.checkContainment(coveredNode.sc, this.sa)) {
                     coveredNode.removeCover()
                     waitlist.add(coveredNode)
@@ -187,15 +217,25 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             }
 
             // strengthening the parent
+            strengthenParents()
+        }
+
+        fun strengthenParents() {
             for (backEdge in backEdges) {
                 val parent = backEdge.source
                 val action = backEdge.getActionFor(this)
-                val constrainedtopreImage = domain.block(
-                    parent.sa,
-                    Not(domain.preImage(this.sa, action)),
-                    parent.sc
-                )
-                parent.changeAbstractLabel(constrainedtopreImage)
+                val preImage = domain.preImage(this.sa, action)
+                if (useSeq) {
+                    parent.strengthenWithSeq(Not(preImage))
+                }
+                else {
+                    val constrainedToPreImage = domain.block(
+                        parent.sa,
+                        Not(preImage),
+                        parent.sc
+                    )
+                    parent.changeAbstractLabel(constrainedToPreImage)
+                }
             }
         }
 
@@ -208,7 +248,12 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             val coverer = coveringNode!!
             if (!domain.isLeq(sa, coverer.sa)) {
                 if (useSeq) strengthenWithSeq(Not(coverer.sa.toExpr()))
-                else changeAbstractLabel(domain.block(sa, Not(coverer.sa.toExpr()), sc))
+                else {
+                    val newExpr =
+                        if(sa.toExpr() == True()) coverer.sa
+                        else domain.block(sa, Not(coverer.sa.toExpr()), sc)
+                    changeAbstractLabel(newExpr)
+                }
             }
         }
 
@@ -474,7 +519,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         val initNode = Node(initState, topInit)
 
         waitlist.add(initNode)
-
+        
         val reachedSet = hashSetOf(initNode)
         val scToNode = hashMapOf(initNode.sc to arrayListOf(initNode))
         var U = hashMapOf(initNode to 1.0)
@@ -1000,48 +1045,31 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     fun fullyExpanded(
         useBVI: Boolean = false,
         threshold: Double,
-        timeout: Int = 0
+        extractKeys: (SA) -> List<*> = {_-> listOf(null) },
+        timeout: Int = 0,
     ): Double {
         reset()
         val timer = Stopwatch.createStarted()
-        val initNode = Node(initState, topInit)
 
-        waitlist.add(initNode)
-
-        val reachedSet = hashSetOf(initNode)
-        val scToNode = hashMapOf(initNode.sc to arrayListOf(initNode))
-
-        while (!waitlist.isEmpty()) {
-            if(timeout != 0 && timer.elapsed(TimeUnit.MILLISECONDS) > timeout)
-                throw RuntimeException("Timeout")
-            val n = waitlist.removeFirst()
-            val newNodes = expand(
-                n,
-                getStdCommands(n.sc),
-                getErrorCommands(n.sc),
-            )
-            for (newNode in newNodes) {
-                close(newNode, reachedSet, scToNode)
-                if(newNode.sc in scToNode) {
-                    scToNode[newNode.sc]!!.add(newNode)
-                } else {
-                    scToNode[newNode.sc] = arrayListOf(newNode)
-                }
-                if (!newNode.isCovered) {
-                    waitlist.addFirst(newNode)
-                }
-                reachedSet.add(newNode)
-            }
-        }
+        //val reachedSet = hashSetOf(initNode)
+        val (reachedSet, scToNode, initNode) = explore(extractKeys, timeout, timer, mergeSameSCNodes)
 
         timer.stop()
         val explorationTime = timer.elapsed(TimeUnit.MILLISECONDS)
         println("Exploration time (ms): $explorationTime")
+        val nodes = reachedSet.getAll()
+
+        println("All nodes: ${nodes.size}")
+        println("Non-covered nodes: ${nodes.count { !it.isCovered }}")
+        println("Strict covers: $numRealCovers")
         timer.reset()
         timer.start()
+        //TODO: game refinement with trie
         val errorProb =
-            if(useGameRefinement) computeErrorProbWithRefinement(initNode, reachedSet,scToNode, useBVI, threshold, threshold)
-            else computeErrorProb(initNode, reachedSet, useBVI, threshold)
+            if(useGameRefinement) computeErrorProbWithRefinement(
+                initNode, nodes.toMutableSet(), scToNode, useBVI, threshold, threshold
+            )
+            else computeErrorProb(initNode, nodes, useBVI, threshold)
         timer.stop()
         val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
         println("Probability computation time (ms): $probTime")
@@ -1049,10 +1077,75 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         return errorProb
     }
 
+    private inner class ExplorationResult(
+        val reachedSet: TrieReachedSet<Node, Any>,
+        val scToNode: MutableMap<SC, ArrayList<Node>>,
+        val initNode: Node
+    ) {
+        operator fun component1() = reachedSet
+        operator fun component2() = scToNode
+        operator fun component3() = initNode
+    }
+
+    private fun explore(
+        extractKeys: (SA) -> List<*>,
+        timeout: Int,
+        timer: Stopwatch,
+        mergeSameSCNodes: Boolean
+    ): ExplorationResult {
+        reset()
+        val initNode = Node(initState, topInit)
+        waitlist.add(initNode)
+        val reachedSet = TrieReachedSet<Node, Any> {
+            extractKeys(it.sa)
+        }
+        currReachedSet = reachedSet
+        val scToNode = hashMapOf(initNode.sc to arrayListOf(initNode))
+
+        while (!waitlist.isEmpty()) {
+            if (timeout != 0 && timer.elapsed(TimeUnit.MILLISECONDS) > timeout)
+                throw RuntimeException("Timeout")
+            val n = waitlist.removeFirst()
+            require(!n.isCovered)
+            close(n, reachedSet, scToNode)
+            if (n.isCovered) continue
+            val newNodes = expand(
+                n,
+                getStdCommands(n.sc),
+                getErrorCommands(n.sc),
+                //if (useSeq || !mergeSameSCNodes) hashMapOf() else scToNode
+                if (mergeSameSCNodes) scToNode else hashMapOf()
+            )
+            for (newNode in newNodes) {
+                //TODO: change to less complex check
+                if (newNode.isCovered || newNode in waitlist)
+                    continue
+                if(newNode.isExpanded) {
+                    newNode.strengthenParents()
+                    continue
+                }
+                close(newNode, reachedSet, scToNode)
+                if (newNode.sc in scToNode) {
+                    scToNode[newNode.sc]!!.add(newNode)
+                } else {
+                    scToNode[newNode.sc] = arrayListOf(newNode)
+                }
+                if (!newNode.isCovered) {
+                    if (newNode !in waitlist) waitlist.addFirst(newNode)
+                } else {
+                    waitlist.remove(newNode)
+                }
+                reachedSet.add(newNode)
+            }
+        }
+        return ExplorationResult(reachedSet, scToNode, initNode)
+    }
+
     private fun expand(
         n: Node,
         stdCommands: Collection<ProbabilisticCommand<A>>,
         errorCommands: Collection<ProbabilisticCommand<A>>,
+        scToNode: Map<SC, List<Node>>? = null
     ): Collection<Node> {
 
         val children = arrayListOf<Node>()
@@ -1076,7 +1169,9 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             if (domain.isEnabled(n.sc, cmd)) {
                 val target = cmd.result.transform { a ->
                     val nextState = domain.concreteTransFunc(n.sc, a)
-                    val newNode = Node(nextState, domain.topAfter(n.sa, a))
+                    val newNode =
+                        scToNode?.get(nextState)?.firstOrNull()
+                            ?: Node(nextState, domain.topAfter(n.sa, a))
                     children.add(newNode)
                     a to newNode
                 }
@@ -1106,27 +1201,36 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     }
 
     private fun close(node: Node, reachedSet: Collection<Node>, scToNode: Map<SC, List<Node>>) {
-        /*for (otherNode in reachedSet) {
-            if (otherNode.sc == node.sc) {
-                node.coverWith(otherNode)
-                node.strengthenForCovering()
-                return
-            }
-        }*/
-        scToNode[node.sc]?.let {
-            val otherNode = it.first()
-            node.coverWith(otherNode)
+        scToNode[node.sc]?.find { it != node && !it.isCovered }?.let {
+            node.coverWith(it)
             node.strengthenForCovering()
             return
         }
         for (otherNode in reachedSet) {
-            if (!otherNode.isCovered && domain.checkContainment(node.sc, otherNode.sa)) {
+            if (otherNode != node && !otherNode.isCovered && domain.checkContainment(node.sc, otherNode.sa)) {
                 node.coverWith(otherNode)
                 node.strengthenForCovering()
                 break
             }
         }
     }
+
+    private fun close(node: Node, reachedSet: TrieReachedSet<Node, *>, scToNode: Map<SC, List<Node>>) {
+        require(!node.isCovered)
+        scToNode[node.sc]?.find { it != node && !it.isCovered }?.let {
+            node.coverWith(it)
+            node.strengthenForCovering()
+            return
+        }
+        for (otherNode in reachedSet.get(node)) {
+            if (otherNode != node && !otherNode.isCovered && domain.checkContainment(node.sc, otherNode.sa)) {
+                node.coverWith(otherNode)
+                node.strengthenForCovering()
+                break
+            }
+        }
+    }
+
 
     abstract inner class PARGAction
     inner class EdgeAction(val e: Edge) : PARGAction() {
@@ -1157,6 +1261,38 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         override fun getPlayer(node: Node): Int = 0 // This is an MDP
     }
+
+    private fun _computeErrorProb_DEBUG(
+        initNode: Node,
+        reachedSet: Collection<Node>,
+        useBVI: Boolean,
+        threshold: Double
+    ): Map<Node, Double> {
+
+        val parg = PARG(initNode, reachedSet)
+        val rewardFunction = TargetRewardFunction<Node, PARGAction> { it.isErrorNode && !it.isCovered }
+        val timer = Stopwatch.createStarted()
+        val initializer =
+            if(false)
+                MDPAlmostSureTargetInitializer(parg, goal) { it.isErrorNode && !it.isCovered }
+            else TargetSetLowerInitializer { it.isErrorNode && !it.isCovered }
+        val quantSolver =
+            if(useBVI) MDPBVISolver(rewardFunction, initializer, threshold)
+            else VISolver(rewardFunction, initializer, threshold, useGS = false)
+
+        val analysisTask = AnalysisTask(parg, { goal })
+        val nodes = parg.getAllNodes()
+        println("All nodes: ${nodes.size}")
+        println("Non-covered nodes: ${nodes.filter { !it.isCovered }.size}")
+
+        val values = quantSolver.solve(analysisTask)
+        timer.stop()
+        val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
+        println("Probability computation time (ms): $probTime")
+
+        return values
+    }
+
 
     private fun computeErrorProb(
         initNode: Node,

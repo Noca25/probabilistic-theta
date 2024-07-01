@@ -1,5 +1,7 @@
 package hu.bme.mit.theta.prob.analysis.menuabstraction
 
+import hu.bme.mit.theta.analysis.Action
+import hu.bme.mit.theta.analysis.State
 import hu.bme.mit.theta.analysis.expl.ExplState
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.analysis.pred.PredState
@@ -53,6 +55,8 @@ fun constrainRange(vararg constraints: Pair<VarDecl<IntType>, Pair<Int, Int>>): 
 fun Expr<BoolType>.then(vararg results: Pair<Double, Stmt>) = ProbabilisticCommand<StmtAction>(
     this, FiniteDistribution(results.associate { it.second.toAction() to it.first })
 )
+
+fun <S: State, A: Action> MenuGameTransFuncResult<S, A>.extractStates() = this.succStates.map { it.transform { it.second } }
 
 // Expr DSL
 infix fun Decl<IntType>.lt(x: Int) = IntExprs.Lt(this.ref, IntExprs.Int(x))

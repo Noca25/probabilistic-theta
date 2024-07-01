@@ -1,9 +1,8 @@
-package hu.bme.mit.theta.prob.analysis.menuabstraction
+package hu.bme.mit.theta.prob.analysis.linkedtransfuncs
 
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.analysis.pred.PredPrec
 import hu.bme.mit.theta.analysis.pred.PredState
-import hu.bme.mit.theta.analysis.pred.PredState.bottom
 import hu.bme.mit.theta.core.decl.Decl
 import hu.bme.mit.theta.core.decl.Decls
 import hu.bme.mit.theta.core.type.Expr
@@ -16,41 +15,34 @@ import hu.bme.mit.theta.core.utils.PathUtils.unfold
 import hu.bme.mit.theta.core.utils.StmtUtils
 import hu.bme.mit.theta.core.utils.indexings.VarIndexing
 import hu.bme.mit.theta.core.utils.indexings.VarIndexingFactory
-import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.addNewIndexToNonZero
-import hu.bme.mit.theta.probabilistic.FiniteDistribution
-import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.utils.WithPushPop
 
-class PredProbabilisticCommandTransFunc(
-    val solver: Solver
-) : ProbabilisticCommandTransFunc<PredState, StmtAction, PredPrec> {
-
+class PredLinkedTransFunc(val solver: Solver): LinkedTransFunc<PredState, StmtAction, PredPrec> {
     private companion object {
         var instanceCounter = 0
     }
     private val litPrefix = "__" + javaClass.simpleName + "_" + (instanceCounter++) + "_"
     private val actLits = arrayListOf<Decl<BoolType>>()
 
-    override fun getNextStates(state: PredState, command: ProbabilisticCommand<StmtAction>, prec: PredPrec): Collection<FiniteDistribution<PredState>> {
-
-        fun getActLit(resultIdx: Int, predIdx: Int) = actLits[resultIdx * prec.preds.size + predIdx]
-
-        val results = arrayListOf<FiniteDistribution<PredState>>()
-        val canFail = WithPushPop(solver).use {
-            solver.add(unfold(state.toExpr(), 0))
-            solver.add(unfold(Not(command.guard), 0))
-            solver.check().isSat
+    private fun generateActivationLiterals(n: Int) {
+        while(actLits.size < n) {
+            actLits.add(Decls.Const(litPrefix + actLits.size, BoolExprs.Bool()))
         }
-        if(canFail) results.add(dirac(bottom()))
+    }
+
+    override fun getSuccStates(currState: PredState, precondition: Expr<BoolType>, actions: List<StmtAction>, prec: PredPrec): List<List<PredState>> {
+        val results = arrayListOf<List<PredState>>()
 
         var i = 0
         val auxIndex = hashMapOf<Expr<BoolType>, Int>()
         val targetIndexing = hashMapOf<Expr<BoolType>, VarIndexing>()
-        generateActivationLiterals(prec.preds.size * command.result.support.size)
+        generateActivationLiterals(prec.preds.size * actions.size)
 
-        val resultExprDistr = command.result.transform {
+        fun getActLit(resultIdx: Int, predIdx: Int) = actLits[resultIdx * prec.preds.size + predIdx]
+
+        val resultExprs = actions.map {
             val stmtUnfoldResult = StmtUtils.toExpr(it.stmts, VarIndexingFactory.indexing(0))
 
             val expr = unfold(And(stmtUnfoldResult.exprs), 0)
@@ -68,17 +60,17 @@ class PredProbabilisticCommandTransFunc(
             val resultExpr = And(multiIndexedExpr, And(activationExprs))
             auxIndex[resultExpr] = i
             i++
-            return@transform resultExpr
+            return@map resultExpr
         }
 
         WithPushPop(solver).use {
-            solver.add(unfold(And(state.toExpr(), command.guard), VarIndexingFactory.indexing(0)))
-            solver.add(And(resultExprDistr.support))
+            solver.add(unfold(And(currState.toExpr(), precondition), 0))
+            solver.add(And(resultExprs))
 
             while (solver.check().isSat) {
                 val model = solver.model
                 val feedbackList = arrayListOf<Expr<BoolType>>()
-                val result = resultExprDistr.transform { expr ->
+                val result = resultExprs.map { expr ->
                     val aux = auxIndex[expr]!!
                     val preds = arrayListOf<Expr<BoolType>>()
                     for ((predIdx, pred) in prec.preds.withIndex()) {
@@ -103,11 +95,5 @@ class PredProbabilisticCommandTransFunc(
         }
 
         return results
-    }
-
-    private fun generateActivationLiterals(n: Int) {
-        while(actLits.size < n) {
-                actLits.add(Decls.Const(litPrefix + actLits.size, BoolExprs.Bool()))
-        }
     }
 }

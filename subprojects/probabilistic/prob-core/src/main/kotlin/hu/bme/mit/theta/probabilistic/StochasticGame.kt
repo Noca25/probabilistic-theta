@@ -1,6 +1,6 @@
 package hu.bme.mit.theta.probabilistic
 
-import java.util.ArrayDeque
+import java.util.*
 
 interface StochasticGame<N, A> {
     val initialNode: N

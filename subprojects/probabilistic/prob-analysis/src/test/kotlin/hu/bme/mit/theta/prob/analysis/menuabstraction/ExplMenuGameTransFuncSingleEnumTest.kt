@@ -8,18 +8,19 @@ import hu.bme.mit.theta.core.stmt.Stmts
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.inttype.IntExprs
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.ExplLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.toAction
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
-import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
-import org.junit.Assert
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 
-class ExplProbabilisticCommandTransFuncMultiEnumTest {
+class ExplMenuGameTransFuncSingleEnumTest {
+
     lateinit var solver: Solver
-    lateinit var transFunc: ExplProbabilisticCommandTransFunc
+    lateinit var transFunc: MenuGameTransFunc<ExplState, StmtAction, ExplPrec>
 
     val A = Decls.Var("A", IntExprs.Int())
     val B = Decls.Var("B", IntExprs.Int())
@@ -28,12 +29,12 @@ class ExplProbabilisticCommandTransFuncMultiEnumTest {
     @Before
     fun initEach() {
         solver = Z3SolverFactory.getInstance().createSolver()
-        transFunc = ExplProbabilisticCommandTransFunc(2, solver)
+        transFunc = BasicMenuGameTransFunc(ExplLinkedTransFunc(1, solver), ::explCanBeDisabled) //ExplMenuGameTransFunc(0, solver)
     }
 
 
     @Test
-    fun complexCommandMaxEnum2Test() {
+    fun complexCommandMaxEnum1Test() {
         val CplusB = IntExprs.Add(C.ref, B.ref)
         val guard = BoolExprs.And(
             listOf(
@@ -51,33 +52,32 @@ class ExplProbabilisticCommandTransFuncMultiEnumTest {
         val state = createState(A to 0, B to 1)
         val prec = ExplPrec.of(listOf(A, B))
 
-        val nexts = transFunc.getNextStates(state, command, prec)
-
+        val res = transFunc.getNextStates(state, command, prec)
+        val nexts = res.extractStates()
         val expected = setOf(
-            dirac(ExplState.bottom()),
-            dirac(createState(A to 1, B to 1)),
             FiniteDistribution(
-                createState(A to 2, B to 1) to 0.2,
+                createState( B to 1) to 0.2,
                 createState(A to 1, B to 1) to 0.8
             )
         )
-
-        Assert.assertEquals(expected, nexts.toSet())
+        assertEquals(expected, nexts.toSet())
+        assert(res.canBeDisabled)
     }
 
     @Test
-    fun infiniteResultCommandMaxEnum2Test() {
+    fun infiniteResultCommandMaxEnum1Test() {
         val command = ProbabilisticCommand<StmtAction>(
-            BoolExprs.True(), dirac(
+            BoolExprs.True(), FiniteDistribution.dirac(
                 Stmts.Havoc(A).toAction())
         )
         val state = createState(A to 0, B to 1)
         val prec = ExplPrec.of(listOf(A, B))
 
-        val nexts = transFunc.getNextStates(state, command, prec)
+        val nexts = transFunc.getNextStates(state, command, prec).extractStates()
         val expected = setOf(
-            dirac(createState( B to 1))
+            FiniteDistribution.dirac(createState( B to 1))
         )
-        Assert.assertEquals(expected, nexts.toSet())
+        assertEquals(expected, nexts.toSet())
     }
+
 }

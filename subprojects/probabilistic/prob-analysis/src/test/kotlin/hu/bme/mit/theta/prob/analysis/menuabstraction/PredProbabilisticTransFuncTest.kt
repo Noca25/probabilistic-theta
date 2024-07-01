@@ -3,13 +3,13 @@ package hu.bme.mit.theta.prob.analysis.menuabstraction
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.analysis.pred.PredPrec
 import hu.bme.mit.theta.analysis.pred.PredState
-import hu.bme.mit.theta.analysis.pred.PredState.bottom
 import hu.bme.mit.theta.core.decl.Decls
 import hu.bme.mit.theta.core.stmt.Stmts
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
 import hu.bme.mit.theta.core.type.inttype.IntExprs.*
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.PredLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.toAction
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
@@ -22,7 +22,7 @@ import org.junit.Test
 
 class PredProbabilisticTransFuncTest {
     lateinit var solver: Solver
-    lateinit var transFunc: PredProbabilisticCommandTransFunc
+    lateinit var transFunc: MenuGameTransFunc<PredState, StmtAction, PredPrec>
 
     val A = Decls.Var("A", Int())
     val B = Decls.Var("B", Int())
@@ -31,7 +31,7 @@ class PredProbabilisticTransFuncTest {
     @Before
     fun initEach() {
         solver = Z3SolverFactory.getInstance().createSolver()
-        transFunc = PredProbabilisticCommandTransFunc(solver)
+        transFunc = BasicMenuGameTransFunc(PredLinkedTransFunc(solver), predCanBeDisabled(solver))
     }
 
     @Test
@@ -49,14 +49,16 @@ class PredProbabilisticTransFuncTest {
             setOf(
                 dirac(createPredState(p)),
                 dirac(createPredState(Not(p)))
-            )
+            ),
+            false
         )
 
         val p1 = Eq(A.ref, Int(0))
         check(
             createPredState(p, p1),
             command, PredPrec.of(listOf(p, p1)),
-            setOf(dirac(createPredState(Not(p), Not(p1))))
+            setOf(dirac(createPredState(Not(p), Not(p1)))),
+            false
         )
     }
 
@@ -82,7 +84,8 @@ class PredProbabilisticTransFuncTest {
                     createPredState(Not(p)) to 0.8
                 ),
                 dirac(createPredState(Not(p)))
-            )
+            ),
+            false
         )
 
         val q0 = Eq(A.ref, Int(0))
@@ -95,7 +98,8 @@ class PredProbabilisticTransFuncTest {
                     createPredState(Not(p), q1) to 0.2,
                     createPredState(Not(p), Not(q1)) to 0.8
                 )
-            )
+            ),
+            false
         )
     }
 
@@ -111,14 +115,16 @@ class PredProbabilisticTransFuncTest {
         check(
             createPredState(p),
             command, PredPrec.of(p),
-            setOf(dirac(createPredState(Not(p))))
+            setOf(dirac(createPredState(Not(p)))),
+            false
         )
 
         val q = Gt(A.ref, Int(3))
         check(
             createPredState(q),
             command, PredPrec.of(q),
-            setOf(dirac(bottom()))
+            setOf(),
+            true
         )
 
         val r = Leq(A.ref, Int(3))
@@ -126,9 +132,9 @@ class PredProbabilisticTransFuncTest {
             createPredState(r),
             command, PredPrec.of(listOf(p, q, r)),
             setOf(
-                dirac(bottom()),
                 dirac(createPredState(Not(p), Not(q), r))
-            )
+            ),
+            true
         )
     }
 
@@ -160,14 +166,14 @@ class PredProbabilisticTransFuncTest {
             createPredState(p, q, r),
             command, PredPrec.of(listOf(p, q, r)),
             setOf(
-                dirac(bottom()), // B might be negative, violating the guard
                 // guard is true => (B, C)={(2, 0), (2, 1)}
                 dirac(createPredState(p, q, Not(r))),
                 FiniteDistribution(
                     createPredState(p, q, r) to 0.2, // if C = 0
                     createPredState(p, q, Not(r)) to 0.8
                 )
-            )
+            ),
+            true // B might be negative, violating the guard
         )
     }
 
@@ -175,9 +181,12 @@ class PredProbabilisticTransFuncTest {
         initState: PredState,
         command: ProbabilisticCommand<StmtAction>,
         prec: PredPrec,
-        expected: Set<FiniteDistribution<PredState>>
+        expectedStates: Set<FiniteDistribution<PredState>>,
+        expectedCanBeDisabled: Boolean
     ) {
-        val result = transFunc.getNextStates(initState, command, prec)
-        assertEquals(expected, result.toSet())
+        val res = transFunc.getNextStates(initState, command, prec)
+        val states = res.extractStates()
+        assertEquals(expectedStates, states.toSet())
+        assertEquals(expectedCanBeDisabled, res.canBeDisabled)
     }
 }

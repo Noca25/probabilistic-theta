@@ -14,4 +14,8 @@ data class ProbabilisticCommand<A: Action>(
         SmartBoolExprs.And(condition, this.guard),
         result
     )
+
+    override fun toString(): String {
+        return "guard: ${this.guard}\nresult: ${this.result}"
+    }
 }

@@ -14,13 +14,13 @@ class FiniteDistribution<D>(
         }
     }
 
-    private val pmf = _pmf.filter { it.value > 0.0 }
+    val pmf = _pmf.filter { it.value > 0.0 }
     constructor(vararg components: Pair<D, Double>): this(components.toMap())
 
     operator fun get(v: D) = pmf.getOrDefault(v, 0.0)
-    val support get() = pmf.keys
+    val support get() = pmf.keys.toList()
 
-    fun expectedValue(f: (D)->Double) = pmf.entries.sumByDouble { it.value*f(it.key) }
+    fun expectedValue(f: (D)->Double) = pmf.entries.sumOf { it.value * f(it.key) }
     fun <E> transform(f: (D)->E): FiniteDistribution<E> {
         val result = hashMapOf<E, Double>()
         for ((k, v) in pmf) {

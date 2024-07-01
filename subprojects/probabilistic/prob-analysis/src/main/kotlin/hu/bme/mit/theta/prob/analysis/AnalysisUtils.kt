@@ -1,5 +1,6 @@
 package hu.bme.mit.theta.prob.analysis
 
+import hu.bme.mit.theta.analysis.expr.ExprAction
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.core.decl.IndexedConstDecl
 import hu.bme.mit.theta.core.decl.MultiIndexedConstDecl
@@ -11,6 +12,9 @@ import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.Type
 import hu.bme.mit.theta.core.type.anytype.PrimeExpr
 import hu.bme.mit.theta.core.type.anytype.RefExpr
+import hu.bme.mit.theta.core.type.booltype.BoolType
+import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
+import hu.bme.mit.theta.core.utils.PathUtils.unfold
 import hu.bme.mit.theta.core.utils.indexings.VarIndexing
 
 /**
@@ -102,3 +106,33 @@ class BasicStmtAction(private val _stmts: List<Stmt>) : StmtAction() {
 }
 
 fun Stmt.toAction() = BasicStmtAction(listOf(this))
+
+data class ToMultiExprResult(
+    val precond: Expr<BoolType>,
+    val resExprs: List<Expr<BoolType>>,
+    val targetIndexings: Map<Expr<BoolType>, VarIndexing>,
+    val auxIndex: Map<Expr<BoolType>, Int>
+) {
+    fun fullExpr() = SmartBoolExprs.And(listOf(precond)+resExprs)
+}
+
+fun <A: ExprAction> ProbabilisticCommand<A>.toMultiIndexedExpr(): ToMultiExprResult {
+
+    var i = 0
+    val auxIndex = hashMapOf<Expr<BoolType>, Int>()
+    val targetIndexing = hashMapOf<Expr<BoolType>, VarIndexing>()
+
+    val resultExprs = this.result.support.map {
+        val toExprResult = it.toExpr()
+
+        val expr = unfold(toExprResult, 0)
+        val multiIndexedExpr = addNewIndexToNonZero(expr,i)
+        targetIndexing[multiIndexedExpr] = it.nextIndexing()
+
+        auxIndex[multiIndexedExpr] = i
+        i++
+        return@map multiIndexedExpr
+    }
+
+    return ToMultiExprResult(this.guard, resultExprs, targetIndexing, auxIndex)
+}

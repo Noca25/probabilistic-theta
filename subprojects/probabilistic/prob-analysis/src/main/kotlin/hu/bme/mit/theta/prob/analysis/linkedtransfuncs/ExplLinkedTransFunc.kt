@@ -1,8 +1,7 @@
-package hu.bme.mit.theta.prob.analysis.menuabstraction
+package hu.bme.mit.theta.prob.analysis.linkedtransfuncs
 
 import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
-import hu.bme.mit.theta.analysis.expl.ExplState.bottom
 import hu.bme.mit.theta.analysis.expl.StmtApplier
 import hu.bme.mit.theta.analysis.expl.StmtApplier.ApplyResult
 import hu.bme.mit.theta.analysis.expr.StmtAction
@@ -14,38 +13,36 @@ import hu.bme.mit.theta.core.model.Valuation
 import hu.bme.mit.theta.core.stmt.Stmts.Assume
 import hu.bme.mit.theta.core.stmt.Stmts.SequenceStmt
 import hu.bme.mit.theta.core.type.Expr
-import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs.*
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.booltype.FalseExpr
+import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs.And
+import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs.Not
 import hu.bme.mit.theta.core.type.booltype.TrueExpr
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
 import hu.bme.mit.theta.core.utils.StmtUtils
 import hu.bme.mit.theta.core.utils.indexings.VarIndexing
 import hu.bme.mit.theta.core.utils.indexings.VarIndexingFactory
-import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.addNewIndexToNonZero
 import hu.bme.mit.theta.prob.analysis.extractMultiIndexValuation
-import hu.bme.mit.theta.probabilistic.FiniteDistribution
-import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.utils.WithPushPop
 
-class ExplProbabilisticCommandTransFunc(
+class ExplLinkedTransFunc(
     val maxEnum: Int = 0,
     val solver: Solver
-) : ProbabilisticCommandTransFunc<ExplState, StmtAction, ExplPrec> {
+) : LinkedTransFunc<ExplState, StmtAction, ExplPrec> {
     init {
         require(maxEnum >= 0) {
             "The number of states to enumerate (maxEnum) must be non-negative, it was set to $maxEnum"
         }
     }
 
-    override fun getNextStates(
-        state: ExplState, command: ProbabilisticCommand<StmtAction>, prec: ExplPrec
-    ): Collection<FiniteDistribution<ExplState>> {
-        val valuation = state.`val`
-        val substitutedGuard = PathUtils.unfold(ExprUtils.simplify(command.guard, valuation),0)
+    override fun getSuccStates(
+        currState: ExplState, precondition: Expr<BoolType>, actions: List<StmtAction>, prec: ExplPrec
+    ): List<List<ExplState>> {
+        val valuation = currState.`val`
+        val substitutedGuard = PathUtils.unfold(ExprUtils.simplify(precondition, valuation), 0)
 
         // Compute whether the command can fail/succeed in the given state taking only its guard into account
         // (as the resulting action part is assumed to be only assignment-like)
@@ -67,27 +64,26 @@ class ExplProbabilisticCommandTransFunc(
         // a surely violated guard, but even if the responsibility of checking this is removed from the LTS
         // (which is a rational decision as LTS is mostly created independently of the type of abstraction),
         // then returning only BOT should keep the algorithm correct
-        if (!canSucceed) return listOf(dirac(bottom()))
+        if (!canSucceed) return listOf()
 
         val stmtApplicationResults = arrayListOf<ApplyResult>()
-        val res = command.result.transform {
-            val resultValuation = MutableValuation.copyOf(state)
-            StmtApplier.apply(SequenceStmt(listOf(Assume(command.guard))+it.stmts), resultValuation, true)
+        val res = actions.map {
+            val resultValuation = MutableValuation.copyOf(currState)
+            StmtApplier.apply(SequenceStmt(listOf(Assume(precondition)) + it.stmts), resultValuation, true)
             prec.createState(resultValuation)
         }
         // If maxEnum is set to 1, then non-deterministic results are always merged to TOP,
         // Which can be handled by the stmt applier
-        if (maxEnum == 1) {
-            return if (canFail) listOf(res, dirac(bottom())) else listOf(res)
-        }
+        if (maxEnum == 1) return listOf(res)
         // This should not happen as the result part of a command is supposed to contain
         // only assignment-like statements, but better safe than sorry
-        if (stmtApplicationResults.contains(ApplyResult.BOTTOM)) return listOf(dirac(bottom()))
+        if (stmtApplicationResults.contains(ApplyResult.BOTTOM))
+            return listOf()
 
         var i = 0
         val auxIndex = hashMapOf<Expr<BoolType>, Int>()
         val targetIndexing = hashMapOf<Expr<BoolType>, VarIndexing>()
-        val resultExprDistr = command.result.transform {
+        val resultExprs = actions.map {
             val stmtUnfoldResult =
                 StmtUtils.toExpr(it.stmts, VarIndexingFactory.indexing(0))
 
@@ -95,7 +91,7 @@ class ExplProbabilisticCommandTransFunc(
                 PathUtils.unfold(
                     //TODO: simplify does not take primes into account, it should be called with a const valuation on the unfolded version
 //                    ExprUtils.simplify(
-                        And(stmtUnfoldResult.exprs),
+                    And(stmtUnfoldResult.exprs),
 //                    valuation),
                     0
                 )
@@ -103,18 +99,18 @@ class ExplProbabilisticCommandTransFunc(
             auxIndex[multiIndexedExpr] = i
             i++
             targetIndexing[multiIndexedExpr] = stmtUnfoldResult.indexing
-            return@transform multiIndexedExpr
+            return@map multiIndexedExpr
         }
 
-        val results = arrayListOf<FiniteDistribution<ExplState>>()
+        val results = arrayListOf<List<ExplState>>()
         WithPushPop(solver).use {
-            solver.add(PathUtils.unfold(And(state.toExpr(), command.guard), 0))
-            solver.add(And(resultExprDistr.support))
+            solver.add(PathUtils.unfold(And(currState.toExpr(), precondition), 0))
+            solver.add(And(resultExprs))
             while (solver.check().isSat) {
                 val model = solver.model
                 val filteredVals = arrayListOf<Valuation>()
                 val newResult =
-                    resultExprDistr.transform { e ->
+                    resultExprs.map { e ->
                         val target = targetIndexing[e]!!
                         val aux = auxIndex[e]!!
 
@@ -151,13 +147,10 @@ class ExplProbabilisticCommandTransFunc(
                 results.add(newResult)
                 // feedback for all-sat with respect to the resulting abstract state
                 solver.add(Not(And(filteredVals.map { it.toExpr() })))
-                if (maxEnum != 0 && results.size > maxEnum) {
-                    return if (canFail) listOf(res, dirac(bottom())) else listOf(res)
-                }
+                if (maxEnum != 0 && results.size > maxEnum) return listOf(res)
             }
         }
 
-        if(canFail) results.add(dirac(bottom()))
         return results
     }
 }

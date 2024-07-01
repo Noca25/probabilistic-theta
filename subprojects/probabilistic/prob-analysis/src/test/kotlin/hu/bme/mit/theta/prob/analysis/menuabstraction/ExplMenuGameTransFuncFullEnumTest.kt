@@ -8,6 +8,7 @@ import hu.bme.mit.theta.core.stmt.Stmts
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.*
 import hu.bme.mit.theta.core.type.inttype.IntExprs.*
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.ExplLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.toAction
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
@@ -17,15 +18,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 
-class ExplProbabilisticCommandTransFuncFullEnumTest {
+class ExplMenuGameTransFuncFullEnumTest {
 
     lateinit var solver: Solver
-    lateinit var transFunc: ExplProbabilisticCommandTransFunc
+    lateinit var transFunc: MenuGameTransFunc<ExplState, StmtAction, ExplPrec>
 
     @Before
     fun initEach() {
         solver = Z3SolverFactory.getInstance().createSolver()
-        transFunc = ExplProbabilisticCommandTransFunc(0, solver)
+        transFunc = BasicMenuGameTransFunc(ExplLinkedTransFunc(0, solver), ::explCanBeDisabled) //ExplMenuGameTransFunc(0, solver)
     }
 
     @Test
@@ -41,12 +42,12 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
         val stateA = createState(A to 0)
 
         // Checking that a simple deterministic assignment works
-        val nexts1 = transFunc.getNextStates(stateA, command, ExplPrec.of(listOf(A)))
+        val nexts1 = transFunc.getNextStates(stateA, command, ExplPrec.of(listOf(A))).extractStates()
         val expected1 = listOf(dirac(createState(A to 1)))
         assertEquals(expected1, nexts1)
 
         // Checking that projecting to the empty precision works
-        val nexts2 = transFunc.getNextStates(stateA, command, ExplPrec.of(listOf()))
+        val nexts2 = transFunc.getNextStates(stateA, command, ExplPrec.of(listOf())).extractStates()
         val expected2 = listOf(dirac(createState()))
         val expected2Top = listOf(dirac(ExplState.top()))
         assertEquals(expected2, nexts2)
@@ -55,9 +56,9 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
         // Checking the result with an irrelevant variable, for all possible non-empty projections
         val B = Decls.Var("B", Int())
         val stateAB = createState(A to 1, B to 2)
-        val nexts3AB = transFunc.getNextStates(stateAB, command, ExplPrec.of(listOf(A, B)))
-        val nexts3A = transFunc.getNextStates(stateAB, command, ExplPrec.of(listOf(A)))
-        val nexts3B = transFunc.getNextStates(stateAB, command, ExplPrec.of(listOf(B)))
+        val nexts3AB = transFunc.getNextStates(stateAB, command, ExplPrec.of(listOf(A, B))).extractStates()
+        val nexts3A = transFunc.getNextStates(stateAB, command, ExplPrec.of(listOf(A))).extractStates()
+        val nexts3B = transFunc.getNextStates(stateAB, command, ExplPrec.of(listOf(B))).extractStates()
 
         val expected3AB = listOf(dirac(createState(A to 2, B to 2)))
         val expected3A = listOf(dirac(createState(A to 2)))
@@ -83,7 +84,7 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
 
         val stateA = createState(A to 0)
 
-        val nexts1 = transFunc.getNextStates(stateA, command, ExplPrec.of(listOf(A)))
+        val nexts1 = transFunc.getNextStates(stateA, command, ExplPrec.of(listOf(A))).extractStates()
         val expected1 = listOf(
             FiniteDistribution(createState(A to 1) to 0.2, createState(A to 2) to 0.8)
         )
@@ -102,7 +103,7 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
         )
 
         val state = createBoolState(A to true)
-        val nexts = transFunc.getNextStates(state, command, ExplPrec.of(listOf(A, B)))
+        val nexts = transFunc.getNextStates(state, command, ExplPrec.of(listOf(A, B))).extractStates()
 
         // As B is unknown in the current state, the next state will depend on which concrete state we choose
         // we only know that A and B will be the same
@@ -118,9 +119,6 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
 
     @Test
     fun guardTest() {
-        val solver = Z3SolverFactory.getInstance().createSolver()
-        val transFunc = ExplProbabilisticCommandTransFunc(0, solver)
-
         val A = Decls.Var("A", Int())
 
         val command = ProbabilisticCommand<StmtAction>(
@@ -132,21 +130,27 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
 
         // The command is enabled in this abstract state
         val state1 = createState(A to 1)
-        val nexts1 = transFunc.getNextStates(state1, command, prec)
+        val res1 = transFunc.getNextStates(state1, command, prec)
+        val nexts1 = res1.extractStates()
         val expected1 = listOf(dirac(createState(A to 2)))
         assertEquals(expected1, nexts1)
+        assert(!res1.canBeDisabled)
 
         // The command in not enabled in this abstract state
         val state2 = createState(A to 3)
-        val nexts2 = transFunc.getNextStates(state2, command, prec)
-        val expected2 = listOf(dirac(ExplState.bottom()))
+        val res2 = transFunc.getNextStates(state2, command, prec)
+        val nexts2 = res2.extractStates()
+        val expected2 = listOf<FiniteDistribution<ExplState>>()
         assertEquals(expected2, nexts2)
+        assert(res2.canBeDisabled)
 
         // Enabledness of the command is unknown in this state
         val state3 = createState()
-        val nexts3 = transFunc.getNextStates(state3, command, prec)
-        val expected3 = setOf(dirac(ExplState.bottom()), dirac(createState(A to 2)))
+        val res3 = transFunc.getNextStates(state3, command, prec)
+        val nexts3 = res3.extractStates()
+        val expected3 = setOf(dirac(createState(A to 2)))
         assertEquals(expected3, nexts3.toSet())
+        assert(res3.canBeDisabled)
     }
 
     /**
@@ -155,9 +159,6 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
      */
     @Test
     fun guardEffectTest() {
-        val solver = Z3SolverFactory.getInstance().createSolver()
-        val transFunc = ExplProbabilisticCommandTransFunc(0, solver)
-
         val A = Decls.Var("A", Int())
 
         val command = ProbabilisticCommand<StmtAction>(
@@ -169,17 +170,16 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
 
         // Although enabledness is unknown, if the command is enabled, we know the next state precisely
         val state = createState()
-        val nexts = transFunc.getNextStates(state, command, prec)
-        val expected = setOf(dirac(ExplState.bottom()), dirac(createState(A to 3)))
+        val res = transFunc.getNextStates(state, command, prec)
+        val nexts = res.extractStates()
+        val expected = setOf(dirac(createState(A to 3)))
         assertEquals(expected, nexts.toSet())
+        assert(res.canBeDisabled)
     }
 
 
     @Test
     fun complexCommandTest() {
-        val solver = Z3SolverFactory.getInstance().createSolver()
-        val transFunc = ExplProbabilisticCommandTransFunc(0, solver)
-
         val A = Decls.Var("A", Int())
         val B = Decls.Var("B", Int())
         val C = Decls.Var("C", Int())
@@ -213,9 +213,9 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
         val state = createState(A to 0, B to 1)
         val prec = ExplPrec.of(listOf(A, B))
 
-        val nexts = transFunc.getNextStates(state, command, prec)
+        val res = transFunc.getNextStates(state, command, prec)
+        val nexts = res.extractStates()
         val expected = setOf(
-            dirac(ExplState.bottom()),
             dirac(createState(A to 1, B to 1)),
             FiniteDistribution(
                 createState(A to 2, B to 1) to 0.2,
@@ -223,5 +223,6 @@ class ExplProbabilisticCommandTransFuncFullEnumTest {
             )
         )
         assertEquals(expected, nexts.toSet())
+        assert(res.canBeDisabled)
     }
 }

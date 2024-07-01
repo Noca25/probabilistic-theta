@@ -126,6 +126,51 @@ class ExplicitStochasticGame private constructor(
         return g
     }
 
+    fun visualize(
+        lowerValues: Map<Node, Double>,
+        upperValues: Map<Node, Double>,
+        colorMap: Map<Node, Color> = hashMapOf()
+    ): Graph {
+        val g = Graph("Game", "Game")
+        var nodeId = 0
+        val idMap = nodes.associateWith { nodeId++ }
+        for (node in nodes) {
+            val attrBuilder = NodeAttributes.builder()
+                .label("[${node.player}] ${node.name} (${lowerValues[node]}-${upperValues[node]})")
+            if(node in colorMap) attrBuilder.fillColor(colorMap[node]!!)
+            g.addNode("n${idMap[node]}", attrBuilder.build())
+        }
+
+        var nextAuxId = 0
+        for (edge in edges) {
+            val attrBuilder = EdgeAttributes.builder()
+                .label(edge.label)
+            if (edge.end.support.size == 1) {
+                g.addEdge(
+                    "n${idMap[edge.start]}",
+                    "n${idMap[edge.end.support.first()]}",
+                    attrBuilder.build()
+                )
+            } else {
+                val auxId = "_AUX${nextAuxId++}"
+                g.addNode(
+                    auxId,
+                    NodeAttributes.builder()
+                        .shape(Shape.RECTANGLE)
+                        .fillColor(Color.GRAY)
+                        .build()
+                )
+                g.addEdge("n${idMap[edge.start]}", auxId, attrBuilder.build())
+                for (n in edge.end.support) {
+                    val prob = edge.end[n]
+                    g.addEdge(auxId, "n${idMap[n]}", EdgeAttributes.builder().label(prob.toString()).build())
+                }
+            }
+        }
+        return g
+
+    }
+
     fun generatePRISM() {
         val nodes = getAllNodes()
         val idx = nodes.withIndex().associate { (idx, n) -> n to idx }

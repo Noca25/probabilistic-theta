@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":theta-solver-z3"))
     implementation(project(":theta-xcfa"))
     implementation(project(":theta-c-frontend"))
+    implementation(project(":theta-xsts"))
 
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.1.0-RC")

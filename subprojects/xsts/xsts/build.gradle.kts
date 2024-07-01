@@ -1,9 +1,10 @@
 plugins {
     id("java-common")
     id("antlr-grammar")
+    id("kotlin-common")
 }
 
 dependencies {
-    compile(project(":theta-common"))
-    compile(project(":theta-core"))
+    implementation(project(":theta-common"))
+    implementation(project(":theta-core"))
 }

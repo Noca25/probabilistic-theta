@@ -3,4 +3,5 @@ plugins {
 }
 dependencies {
     implementation(project(":theta-core"))
+    implementation(project(":theta-common"))
 }

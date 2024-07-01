@@ -4,7 +4,7 @@ plugins {
 }
 
 dependencies {
-    compile(project(":theta-solver-smtlib"))
+    implementation(project(":theta-solver-smtlib"))
 }
 
 application {

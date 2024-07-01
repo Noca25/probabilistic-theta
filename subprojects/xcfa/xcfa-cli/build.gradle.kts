@@ -4,12 +4,12 @@ plugins {
 }
 
 dependencies {
-    compile(project(":theta-xcfa"))
-    compile(project(":theta-xcfa-analysis"))
-    compile(project(":theta-solver-z3"))
-    compile(project(":theta-cfa-analysis"))
-    compile(project(":theta-cfa"))
-    compile(project(":theta-cfa-cli"))
+    implementation(project(":theta-xcfa"))
+    implementation(project(":theta-xcfa-analysis"))
+    implementation(project(":theta-solver-z3"))
+    implementation(project(":theta-cfa-analysis"))
+    implementation(project(":theta-cfa"))
+    implementation(project(":theta-cfa-cli"))
 }
 
 application {

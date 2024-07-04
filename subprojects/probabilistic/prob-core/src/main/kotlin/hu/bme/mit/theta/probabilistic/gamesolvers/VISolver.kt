@@ -24,9 +24,13 @@ class VISolver<N, A>(
     }
 
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
+        return solveWithStrategy(analysisTask).first
+    }
+
+    override fun solveWithStrategy(analysisTask: AnalysisTask<N, A>): Pair<Map<N, Double>, Map<N, A>> {
+        val strategy = hashMapOf<N, A>()
         val game = analysisTask.game
         val goal = analysisTask.goal
-
 
         val allNodes = game.getAllNodes() // This should result in an exception if the game is infinite
         var curr = allNodes.associateWith { initializer.initialLowerBound(it) }
@@ -35,8 +39,9 @@ class VISolver<N, A>(
             val stepResult =
                 bellmanStep(game, curr, goal, rewardFunction, analysisTask.discountFactor, useGS, unknownNodes)
             val maxChange = stepResult.maxChange
+            strategy.putAll(stepResult.strategyUpdate!!)
             curr = stepResult.result
         } while (maxChange > tolerance)
-        return curr
+        return curr to strategy
     }
 }

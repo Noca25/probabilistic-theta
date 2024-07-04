@@ -17,6 +17,9 @@ import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
 import hu.bme.mit.theta.core.utils.PathUtils.unfold
 import hu.bme.mit.theta.core.utils.indexings.VarIndexing
 
+const val P_ABSTRACTION = 0
+const val P_CONCRETE = 1
+
 /**
  * Transforms all indexed const decls with non-zero index to a multi-indexed const decl with its first index
  * being the old index, and its second index being the newIndex parameter

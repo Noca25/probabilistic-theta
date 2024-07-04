@@ -143,4 +143,8 @@ class MDPBVISolver<N, A>(
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
         return solveWithRange(analysisTask).lower
     }
+
+    override fun solveWithStrategy(analysisTask: AnalysisTask<N, A>): Pair<Map<N, Double>, Map<N, A>> {
+        TODO("Not yet implemented")
+    }
 }

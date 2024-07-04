@@ -1,6 +1,8 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers
 
-import hu.bme.mit.theta.probabilistic.*
+import hu.bme.mit.theta.probabilistic.AnalysisTask
+import hu.bme.mit.theta.probabilistic.RangeSolution
+import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 
 class SGBVISolver<N, A>(
     val threshold: Double,
@@ -54,5 +56,9 @@ class SGBVISolver<N, A>(
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
         val (l, u) = solveWithRange(analysisTask)
         return l.keys.associateWith { (u[it]!!+l[it]!!)/2 }
+    }
+
+    override fun solveWithStrategy(analysisTask: AnalysisTask<N, A>): Pair<Map<N, Double>, Map<N, A>> {
+        TODO("Not yet implemented")
     }
 }

@@ -13,10 +13,13 @@ import hu.bme.mit.theta.analysis.pred.PredState
 import hu.bme.mit.theta.common.visualization.writer.GraphvizWriter
 import hu.bme.mit.theta.core.decl.Decls
 import hu.bme.mit.theta.core.stmt.Stmts.Assign
+import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.And
+import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.inttype.IntExprs.*
 import hu.bme.mit.theta.core.utils.ExprUtils
-import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.P_ABSTRACTION
+import hu.bme.mit.theta.prob.analysis.P_CONCRETE
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.ExplLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.PredLinkedTransFunc
 import hu.bme.mit.theta.probabilistic.AnalysisTask
@@ -34,24 +37,22 @@ class MenuGameAbstractorTest {
     val A = Decls.Var("A", Int())
     val B = Decls.Var("B", Int())
     val C = Decls.Var("C", Int())
-    val solver = Z3SolverFactory.getInstance().createSolver()
     val fullInit = createState(A to 0, B to 0, C to 0)
+
+    lateinit var targetExpr: Expr<BoolType>
+    val solver = Z3SolverFactory.getInstance().createSolver()
+
     val explInit = InitFunc<ExplState, ExplPrec> { prec -> listOf(prec.createState(fullInit)) }
     val innerPredInitFunc = PredInitFunc.create(PredAbstractors.booleanAbstractor(solver), fullInit.toExpr())
     val predInit = InitFunc<PredState, PredPrec> { prec -> innerPredInitFunc.getInitStates(prec) }
+
     lateinit var explLts: SimpleProbLTS<ExplState>
     lateinit var predLts: SimpleProbLTS<PredState>
+
     lateinit var explTransFunc: MenuGameTransFunc<ExplState, StmtAction, ExplPrec>
     lateinit var predTransFunc: MenuGameTransFunc<PredState, StmtAction, PredPrec>
     lateinit var explAbstractor: MenuGameAbstractor<ExplState, StmtAction, ExplPrec>
     lateinit var predAbstractor: MenuGameAbstractor<PredState, StmtAction, PredPrec>
-
-    class SimpleProbLTS<S: ExprState>(private val commands: List<ProbabilisticCommand<StmtAction>>) :
-        ProbabilisticCommandLTS<S, StmtAction> {
-        override fun getAvailableCommands(state: S): Collection<ProbabilisticCommand<StmtAction>> {
-            return commands//.filter { ExprUtils.simplify(it.guard, state) != False() }
-        }
-    }
 
     private fun simpleSetup() {
         // [A < 2 && B < 3]:
@@ -68,7 +69,7 @@ class MenuGameAbstractorTest {
         )
         explLts = SimpleProbLTS(commands)
         predLts = SimpleProbLTS(commands)
-        val targetExpr = Eq(A.ref, Int(2))
+        targetExpr = Eq(A.ref, Int(2))
 
         explTransFunc =
             BasicMenuGameTransFunc(
@@ -87,26 +88,25 @@ class MenuGameAbstractorTest {
                 PredLinkedTransFunc(solver),
                 predCanBeDisabled(solver)
             )
-        val asd = MenuGameAbstractor(
+        predAbstractor = MenuGameAbstractor(
             predLts, predInit, predTransFunc,
             targetExpr,
             predMaySatisfy(solver),
             predMustSatisfy(solver)
         )
-        predAbstractor = asd
     }
 
-    private fun checkAndViz(abstraction: MenuGameAbstractor.AbstractionResult<ExplState, StmtAction>) {
+    private fun <S: ExprState> checkAndViz(abstraction: MenuGameAbstractor.AbstractionResult<S, StmtAction>) {
         val (lowerValues, upperValues) = computeValues(abstraction)
 
         // checked manually
         testViz(abstraction.game, lowerValues, upperValues)
     }
 
-    private fun testViz(
-        sg: StochasticGame<MenuGameAbstractor.MenuGameNode<ExplState, StmtAction>, MenuGameAbstractor.MenuGameAction<ExplState, StmtAction>>,
-        lowerValues: Map<MenuGameAbstractor.MenuGameNode<ExplState, StmtAction>, Double>,
-        upperValues: Map<MenuGameAbstractor.MenuGameNode<ExplState, StmtAction>, Double>
+    private fun <S: ExprState> testViz(
+        sg: StochasticGame<MenuGameAbstractor.MenuGameNode<S, StmtAction>, MenuGameAbstractor.MenuGameAction<S, StmtAction>>,
+        lowerValues: Map<MenuGameAbstractor.MenuGameNode<S, StmtAction>, Double>,
+        upperValues: Map<MenuGameAbstractor.MenuGameNode<S, StmtAction>, Double>
     ) {
         val materResult = sg.materialize()
         val viz = GraphvizWriter.getInstance().writeString(
@@ -121,7 +121,9 @@ class MenuGameAbstractorTest {
         println(viz)
     }
 
-    private fun computeValues(abstraction: MenuGameAbstractor.AbstractionResult<ExplState, StmtAction>): Pair<Map<MenuGameAbstractor.MenuGameNode<ExplState, StmtAction>, Double>, Map<MenuGameAbstractor.MenuGameNode<ExplState, StmtAction>, Double>> {
+    private fun <S: ExprState> computeValues(
+        abstraction: MenuGameAbstractor.AbstractionResult<S, StmtAction>
+    ): Pair<Map<MenuGameAbstractor.MenuGameNode<S, StmtAction>, Double>, Map<MenuGameAbstractor.MenuGameNode<S, StmtAction>, Double>> {
         val lowerAnalysisTask =
             AnalysisTask(abstraction.game, setGoal(P_CONCRETE to Goal.MAX, P_ABSTRACTION to Goal.MIN))
         val lowerValues = VISolver(
@@ -234,7 +236,7 @@ class MenuGameAbstractorTest {
     }
 
     @Test
-    fun refinerTest() {
+    fun refinerTestExpl() {
         simpleSetup()
 
         val initPrec = ExplPrec.of(listOf(A))
@@ -273,6 +275,60 @@ class MenuGameAbstractorTest {
 
         println(res)
         assert(res.finalPrec == ExplPrec.of(listOf(A, B)))
+        assert(res.finalUpperInitValue-res.finalLowerInitValue <= threshold)
+    }
+
+
+    @Test
+    fun predOnlyTargetTest() {
+        simpleSetup()
+        val prec = PredPrec.of(listOf(targetExpr))
+        val abstraction = predAbstractor.computeAbstraction(prec)
+        val sg = abstraction.game
+
+        val initialNode = sg.initialNode
+        assert(initialNode is MenuGameAbstractor.MenuGameNode.StateNode && initialNode.s == PredState.of(prec.negate(targetExpr)))
+
+        checkAndViz(abstraction)
+    }
+
+    @Test
+    fun refinerTestPred() {
+        simpleSetup()
+
+        val initPrec = PredPrec.of(listOf(targetExpr))
+        val abstraction = predAbstractor.computeAbstraction(initPrec)
+        val (lower, upper) = computeValues(abstraction)
+
+        val refiner = MenuGameRefiner<PredState, StmtAction, PredPrec>(solver) {
+            this.join(PredPrec.of(ExprUtils.getAtoms(it)))
+        }
+
+        val (newPrec, pivot) = refiner.refine(abstraction.game, upper, lower, initPrec)
+        println(pivot)
+        println(newPrec)
+    }
+
+    @Test
+    fun cegarTestPred() {
+        simpleSetup()
+        val refiner = MenuGameRefiner<PredState, StmtAction, PredPrec>(solver) {
+            this.join(PredPrec.of(ExprUtils.getAtoms(it)))
+        }
+
+        val threshold = 1e-6
+        val res = MenuGameCegarChecker(predAbstractor, refiner) { rewardFun ->
+            VISolver(
+                rewardFun,
+                TargetSetLowerInitializer {
+                    it is MenuGameAbstractor.MenuGameNode.StateNode && rewardFun(it) == 1.0
+                },
+                threshold/2, //TODO: is this okay?
+                false
+            )
+        }.check(PredPrec.of(listOf(targetExpr)), Goal.MAX, threshold)
+
+        println(res)
         assert(res.finalUpperInitValue-res.finalLowerInitValue <= threshold)
     }
 }

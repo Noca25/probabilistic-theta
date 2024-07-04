@@ -9,9 +9,10 @@ import java.util.ArrayDeque
 import kotlin.collections.*
 import kotlin.math.abs
 
-data class StepResult<N>(
+data class StepResult<N, A>(
     val result: Map<N, Double>,
-    val maxChange: Double
+    val maxChange: Double,
+    val strategyUpdate: Map<N, A>?
 )
 
 /**
@@ -21,13 +22,14 @@ data class StepResult<N>(
  *  or the original values (standard VI, false)
  * @return Result of the Bellman update along with the absolute value of the largest value changed.
  */
+@Deprecated("use the overload with a reward function instead")
 fun <N, A> bellmanStep(
     game: StochasticGame<N, A>,
     currValues: Map<N, Double>,
     goal: (Int) -> Goal,
     discountFactor: Double = 1.0,
     gaussSeidel: Boolean = false
-): StepResult<N> {
+): StepResult<N, A> {
     val res = HashMap(currValues)
     val v = if(gaussSeidel) res else currValues
     var maxChange = 0.0
@@ -39,7 +41,7 @@ fun <N, A> bellmanStep(
         val change = abs(newValue - currValues[node]!!)
         if (change > maxChange) maxChange = change
     }
-    return StepResult(res, maxChange)
+    return StepResult(res, maxChange, null)
 }
 
 /**
@@ -47,6 +49,8 @@ fun <N, A> bellmanStep(
  * States meant to be absorbing must not be equipped with self-loops as it results in infinite reward.
  * @param gaussSeidel Specifies whether the already updated neighbour values should be used (Gauss-Seidel VI, true),
  *  or the original values (standard VI, false)
+ * @param unknownNodes specifies the set of nodes with unknown (not yet converged) values,
+ *  new values are computed only for these nodes
  * @return Result of the Bellman update along with the absolute value of the largest value changed.
  */
 fun <N, A> bellmanStep(
@@ -57,19 +61,23 @@ fun <N, A> bellmanStep(
     discountFactor: Double = 1.0,
     gaussSeidel: Boolean = false,
     unknownNodes: Collection<N> = game.getAllNodes()
-): StepResult<N> {
+): StepResult<N, A> {
     val res = HashMap(currValues)
     val v = if(gaussSeidel) res else currValues
     var maxChange = 0.0
+    val strategyUpdate = hashMapOf<N, A>()
     for (node in unknownNodes) {
+        val values = actionValues(game, v, node, rewardFunction)
+        val chosenAction = goal(game.getPlayer(node)).argSelect(values)
+        if (chosenAction != null) strategyUpdate[node] = chosenAction
         val newValue =
             rewardFunction.getStateReward(node) +
-            discountFactor * (goal(game.getPlayer(node)).select(actionValues(game, v, node, rewardFunction).values) ?: 0.0)
+            discountFactor * (values.getOrDefault(chosenAction, 0.0))
         res[node] = newValue
         val change = abs(newValue - currValues[node]!!)
         if (change > maxChange) maxChange = change
     }
-    return StepResult(res, maxChange)
+    return StepResult(res, maxChange, strategyUpdate)
 }
 
 /**

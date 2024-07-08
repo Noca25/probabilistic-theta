@@ -28,13 +28,13 @@ class VISolver<N, A>(
     }
 
     override fun solveWithStrategy(analysisTask: AnalysisTask<N, A>): Pair<Map<N, Double>, Map<N, A>> {
-        val strategy = hashMapOf<N, A>()
         val game = analysisTask.game
         val goal = analysisTask.goal
 
         val allNodes = game.getAllNodes() // This should result in an exception if the game is infinite
         var curr = allNodes.associateWith { initializer.initialLowerBound(it) }
         val unknownNodes = allNodes.filterNot(initializer::isKnown)
+        val strategy = hashMapOf<N, A>() // TODO: handle known nodes
         do {
             val stepResult =
                 bellmanStep(game, curr, goal, rewardFunction, analysisTask.discountFactor, useGS, unknownNodes)

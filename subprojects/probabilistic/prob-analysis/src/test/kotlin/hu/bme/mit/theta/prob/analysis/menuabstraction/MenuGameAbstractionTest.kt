@@ -32,7 +32,7 @@ import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import org.junit.Test
 import java.awt.Color
 
-class MenuGameAbstractorTest {
+class MenuGameAbstractionTest {
 
     val A = Decls.Var("A", Int())
     val B = Decls.Var("B", Int())

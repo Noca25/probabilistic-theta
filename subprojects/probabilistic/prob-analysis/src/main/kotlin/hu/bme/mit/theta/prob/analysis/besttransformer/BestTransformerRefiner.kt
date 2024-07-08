@@ -12,27 +12,21 @@ import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.utils.WpState
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction
+import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction.AbstractionChoice
+import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction.ConcreteChoice
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode.AbstractionChoiceNode
-import hu.bme.mit.theta.probabilistic.StochasticGame
+import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode.ConcreteChoiceNode
 import hu.bme.mit.theta.solver.Solver
 import java.util.*
 
 class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refutation>(
     val solver: Solver,
     val extend: P.(basedOn: Expr<BoolType>) -> P,
-    val pivotSelectionStrategy: (
-        sg: StochasticGame<BestTransformerGameNode<S, A>,
-                BestTransformerGameAction<S, A>>,
-        refinableNodes: List<AbstractionChoiceNode<S, A>>,
-        valueFunctionMax: Map<BestTransformerGameNode<S, A>, Double>,
-        valueFunctionMin: Map<BestTransformerGameNode<S, A>, Double>
-    ) -> AbstractionChoiceNode<S, A>,
+    val pivotSelectionStrategy: PivotSelectionStrategy,
     val eliminateSpurious: Boolean = false,
     val traceChecker: ExprTraceChecker<R>? = null,
     val refToPrec: RefutationToPrec<P, R>? = null,
-    val getPrevNodes: (BestTransformerGameNode<S, A>) -> List<BestTransformerGameNode<S, A>> =
-        { throw UnsupportedOperationException() }
 ) {
     init {
         require(!eliminateSpurious || (traceChecker != null && refToPrec != null))
@@ -45,10 +39,7 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
     )
 
     fun refine(
-        sg: StochasticGame<
-                BestTransformerGameNode<S, A>,
-                BestTransformerGameAction<S, A>
-                >,
+        sg: BestTransformerAbstractor.BestTransformerGame<S, A, *>,
         valueFunctionMax: Map<BestTransformerGameNode<S, A>, Double>,
         valueFunctionMin: Map<BestTransformerGameNode<S, A>, Double>,
         strategyMax: Map<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>,
@@ -76,8 +67,8 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
         val refinableNodes = nodesToConsider.filter {
             minMaxChoiceDifference(it).let { it.first.isNotEmpty() || it.second.isNotEmpty() }
         }
-        val pivotNode = pivotSelectionStrategy(
-            sg, refinableNodes, valueFunctionMax, valueFunctionMin
+        val pivotNode = pivotSelectionStrategy.selectPivot(
+            sg, refinableNodes, valueFunctionMax, valueFunctionMin, strategyMax, strategyMin
         )
 
         if (eliminateSpurious) {
@@ -99,18 +90,18 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
         val lowerChoice = sg.getResult(
             pivotNode,
             diff.first.first()
-        ).support.first() as BestTransformerGameNode.ConcreteChoiceNode<S, A>
+        ).support.first() as ConcreteChoiceNode<S, A>
         val upperChoice = sg.getResult(
             pivotNode,
             diff.second.first()
-        ).support.first() as BestTransformerGameNode.ConcreteChoiceNode<S, A>
+        ).support.first() as ConcreteChoiceNode<S, A>
 
         var newPrec = prec
         for (it in sg.getAvailableActions(lowerChoice)) {
             // TODO: this might be replaced by making all commands that currently have the same value (up to tolerance), as the selected choice
             val commandRelevant = it == strategyMin[lowerChoice]
             if (!commandRelevant) continue
-            val command = (it as BestTransformerGameAction.ConcreteChoice<S, A>).command
+            val command = (it as ConcreteChoice<S, A>).command
             val otherRes = upperChoice.commandResults[command]
             if (otherRes == null) {
                 newPrec = newPrec.extend(it.command.guard)
@@ -124,7 +115,7 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
         for (it in sg.getAvailableActions(upperChoice)) {
             val commandRelevant = it == strategyMax[upperChoice]
             if (!commandRelevant) continue
-            val command = (it as BestTransformerGameAction.ConcreteChoice<S, A>).command
+            val command = (it as ConcreteChoice<S, A>).command
             val otherRes = lowerChoice.commandResults[command]
             if (otherRes == null) {
                 newPrec = newPrec.extend(it.command.guard)
@@ -140,10 +131,7 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
     }
 
     fun computeMostProbablePath(
-        sg: StochasticGame<
-                BestTransformerGameNode<S, A>,
-                BestTransformerGameAction<S, A>
-                >,
+        sg: BestTransformerAbstractor.BestTransformerGame<S, A, *>,
         target: BestTransformerGameNode<S, A>,
         strategy: Map<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>
     ): Trace<S, A> {
@@ -154,29 +142,36 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
         val next = hashMapOf<BestTransformerGameNode<S, A>, BestTransformerGameNode<S, A>>()
         while (changed.isNotEmpty()) {
             val node = changed.poll()
-            for (prevNode in getPrevNodes(node)) {
+            for (prevNode in sg.getPreviousNodes(node)!!) {
                 val chosenAction = strategy[prevNode]!!
                 val res = sg.getResult(prevNode, chosenAction)
                 val pp = res[node]
                 val ppp = pp * p[node]!!
                 if(ppp > p[prevNode]!!) {
-                    p[node] = ppp
+                    p[prevNode] = ppp
                     changed.add(prevNode)
                     next[prevNode] = node
                 }
             }
         }
-        if(p[sg.initialNode] == 0.0) TODO("The target is not reachable with this strategy")
-        val states = arrayListOf((sg.initialNode as AbstractionChoiceNode<S, A>).s)
+        if(p[sg.initialNode] == 0.0) TODO("The chosen pivot node is not reachable with this strategy")
+        val states = arrayListOf<S>()
         val actions = arrayListOf<A>()
         var curr = sg.initialNode
         while (curr != target) {
-            curr = next[curr]!!
             if(curr is AbstractionChoiceNode) {
                 states.add(curr.s)
-                TODO("actions")
+                val abstractionChoiceResult = next[curr] as ConcreteChoiceNode
+                val command = (strategy[abstractionChoiceResult]!! as ConcreteChoice).command
+                val commandResult = (strategy[curr]!! as AbstractionChoice).commandResults[command]!!
+                val action = commandResult.support.find {
+                    it.second == (next[abstractionChoiceResult]!! as AbstractionChoiceNode).s
+                }!!.first
+                actions.add(action)
             }
+            curr = next[curr]!!
         }
+        states.add((target as AbstractionChoiceNode).s)
         return Trace.of(states, actions)
     }
 }

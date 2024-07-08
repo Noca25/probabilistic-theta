@@ -34,8 +34,9 @@ interface StochasticGameSolver<N, A> {
     fun solveWithStrategy(analysisTask: AnalysisTask<N, A>): Pair<Map<N, Double>, Map<N, A>>
 }
 
-data class RangeSolution<N>(
+data class RangeSolution<N, A>(
     val lower: Map<N, Double>,
-    val upper: Map<N, Double>
+    val upper: Map<N, Double>,
+    val strategy: Map<N, A>? = null
 )
 

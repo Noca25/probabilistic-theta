@@ -35,7 +35,10 @@ class MDPBVISolver<N, A>(
         }
     }
 
-    private inner class MergedEdge(val res: FiniteDistribution<MergedNode>, val reward: Map<MergedNode, Double>)
+    private inner class MergedEdge(
+        val res: FiniteDistribution<MergedNode>,
+        val reward: Map<MergedNode, Double>,
+        val origin: Pair<N, A>)
 
     private inner class MergedGame(
         val initNode: MergedNode, val nodes: List<MergedNode>
@@ -61,7 +64,7 @@ class MDPBVISolver<N, A>(
         }
     }
 
-    fun solveWithRange(analysisTask: AnalysisTask<N, A>): RangeSolution<N> {
+    fun solveWithRange(analysisTask: AnalysisTask<N, A>): RangeSolution<N, A> {
         require(analysisTask.discountFactor == 1.0) {
             "Discount not supported for BVI (yet?)"
         }
@@ -70,6 +73,9 @@ class MDPBVISolver<N, A>(
         val game = analysisTask.game
         val initNode = game.initialNode
         val initGoal = goal(game.getPlayer(initNode))
+        require(initGoal == Goal.MAX) {
+            "Only maximization supported with BVI for now, merging might need to be adjusted for MIN, not tested yet"
+        }
         val nodes = game.getAllNodes()
         val mecs = computeMECs(game)
 
@@ -108,7 +114,7 @@ class MDPBVISolver<N, A>(
                             }
                         }
                         node.edges.add(
-                            MergedEdge(res.transform { mergedGameMap[it]!! }, reward)
+                            MergedEdge(res.transform { mergedGameMap[it]!! }, reward, Pair(origNode, action))
                         )
                     }
                 }
@@ -127,17 +133,46 @@ class MDPBVISolver<N, A>(
             else it.origNodes.maxOf { initializer.initialUpperBound(it) }
         }
         val unknownNodes = mergedGameNodes.filter { uCurr[it]!! - lCurr[it]!! > threshold }.toMutableList()
+
+        val strategy = hashMapOf<MergedNode, MergedEdge>()
         do {
             lCurr = bellmanStep(mergedGame, lCurr, {initGoal}, mergedRewardFunction, unknownNodes = unknownNodes).result
-            uCurr = bellmanStep(mergedGame, uCurr, {initGoal}, mergedRewardFunction, unknownNodes = unknownNodes).result
+            val uStep =
+                bellmanStep(mergedGame, uCurr, { initGoal }, mergedRewardFunction, unknownNodes = unknownNodes)
+            uCurr = uStep.result
+            strategy.putAll(uStep.strategyUpdate!!)
             // TODO: it'd be more efficient to do this during the update
             unknownNodes.removeAll { uCurr[it]!!-lCurr[it]!! < threshold }
         } while (uCurr[mergedInit]!!-lCurr[mergedInit]!! > threshold)
 
         return RangeSolution(
             nodes.associateWith { lCurr[mergedGameMap[it]!!]!! },
-            nodes.associateWith { uCurr[mergedGameMap[it]!!]!! }
+            nodes.associateWith { uCurr[mergedGameMap[it]!!]!! },
+            liftStrategy(game, strategy)
         )
+    }
+
+    private fun liftStrategy(origGame: StochasticGame<N, A>, mergedStrategy: Map<MergedNode, MergedEdge>): Map<N, A> {
+        val originalStrategy = hashMapOf<N, A>()
+        for ((mergedNode, chosenEdge) in mergedStrategy) {
+            originalStrategy[chosenEdge.origin.first] = chosenEdge.origin.second
+            val known = hashSetOf(chosenEdge.origin.first)
+            while (known.size != mergedNode.origNodes.size) {
+                for (origNode in mergedNode.origNodes) {
+                    if(origNode !in known) {
+                        val action =
+                            origGame.getAvailableActions(origNode).find {
+                                origGame.getResult(origNode, it).support.any { it in known }
+                            }
+                        if (action != null) {
+                            known.add(origNode)
+                            originalStrategy[origNode] = action
+                        }
+                    }
+                }
+            }
+        }
+        return originalStrategy
     }
 
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {

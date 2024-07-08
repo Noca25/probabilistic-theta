@@ -22,7 +22,6 @@ import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
 import hu.bme.mit.theta.probabilistic.GameRewardFunction
 import hu.bme.mit.theta.probabilistic.ImplicitStochasticGame
-import hu.bme.mit.theta.probabilistic.StochasticGame
 
 interface BestTransformerTransFunc<S : State, A : Action, P : Prec> {
     fun getNextStates(
@@ -62,7 +61,6 @@ class BasicBestTransformerTransFunc<S : State, A : Action, P : Prec>(
         }
         return results
     }
-
 }
 
 class BestTransformerAbstractor<S : State, A : Action, P : Prec>(
@@ -113,12 +111,107 @@ class BestTransformerAbstractor<S : State, A : Action, P : Prec>(
     }
 
     data class AbstractionResult<S : State, A : Action>(
-        val game: StochasticGame<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>,
+        val game: BestTransformerGame<S, A, *>,
         val rewardMin: GameRewardFunction<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>,
         val rewardMax: GameRewardFunction<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>
     )
 
-    fun computeAbstraction(prec: P): AbstractionResult<S, A> {
+    class BestTransformerGame<S : State, A : Action, P : Prec>(
+        val prec: P,
+        val trackPredecessors: Boolean = false,
+        val lts: ProbabilisticCommandLTS<S, A>,
+        val init: InitFunc<S, P>,
+        val transFunc: BestTransformerTransFunc<S, A, P>,
+        val targetExpr: Expr<BoolType>,
+        val maySatisfy: (S, Expr<BoolType>) -> Boolean,
+        val mustSatisfy: (S, Expr<BoolType>) -> Boolean,
+    ) : ImplicitStochasticGame<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>() {
+        private val _initialNode: BestTransformerGameNode<S, A>
+        private val predecessors = hashMapOf<BestTransformerGameNode<S, A>, MutableSet<BestTransformerGameNode<S, A>>>()
+
+        init {
+            val initState = init.getInitStates(prec).first() // TODO: cannot handle multiple abstract inits yet
+            val mayBeTarget = maySatisfy(initState, targetExpr)
+            val mustBeTarget = mustSatisfy(initState, targetExpr)
+            _initialNode = AbstractionChoiceNode(
+                initState,
+                if (mayBeTarget) 1 else 0,
+                if (mustBeTarget) 1 else 0,
+                targetExpr,
+                null,
+                mustBeTarget
+            )
+        }
+
+        override val initialNode: BestTransformerGameNode<S, A>
+            get() = _initialNode
+
+        val transFuncCache = hashMapOf<BestTransformerGameNode<S, A>, Collection<BestTransformerGameAction<S, A>>>()
+        override fun getAvailableActions(node: BestTransformerGameNode<S, A>): Collection<BestTransformerGameAction<S, A>> {
+            when (node) {
+                is AbstractionChoiceNode -> {
+                    if (node.absorbing) return listOf()
+                    return transFuncCache.getOrPut(node) {
+                        val commands = lts.getAvailableCommands(node.s).toList()
+                        val choices = transFunc.getNextStates(node.s, commands, prec)
+                        return@getOrPut choices.map { AbstractionChoice(it.toMap()) }
+                    }
+                }
+
+                is ConcreteChoiceNode -> return node.commandResults.keys.map { ConcreteChoice(it) }
+            }
+        }
+
+        override fun getResult(
+            node: BestTransformerGameNode<S, A>,
+            action: BestTransformerGameAction<S, A>
+        ): FiniteDistribution<BestTransformerGameNode<S, A>> {
+            val result: FiniteDistribution<BestTransformerGameNode<S, A>> = when (node) {
+                is AbstractionChoiceNode -> {
+                    when (action) {
+                        is AbstractionChoice -> dirac(ConcreteChoiceNode(action.commandResults))
+                        is ConcreteChoice -> throw IllegalArgumentException()
+                    }
+                }
+
+                is ConcreteChoiceNode -> {
+                    when (action) {
+                        is AbstractionChoice -> throw IllegalArgumentException()
+                        is ConcreteChoice -> node.commandResults[action.command]!!.transform {
+                            val mayBeTarget = maySatisfy(it.second, targetExpr)
+                            val mustBeTarget = mustSatisfy(it.second, targetExpr)
+                            require(mustBeTarget == mayBeTarget) {
+                                "The abstraction must be exact with respect to the target labels/rewards for now"
+                            }
+                            AbstractionChoiceNode(
+                                it.second,
+                                if (mayBeTarget) 1 else 0,
+                                if (mustBeTarget) 1 else 0,
+                                targetExpr,
+                                null,
+                                mustBeTarget
+                            )
+                        }
+                    }
+                }
+            }
+            if (trackPredecessors) {
+                for (resultNode in result.support) {
+                    predecessors.getOrPut(resultNode) { hashSetOf() }.add(node)
+                }
+            }
+            return result
+        }
+
+        override fun getPlayer(node: BestTransformerGameNode<S, A>) = node.player
+
+        fun getPreviousNodes(node: BestTransformerGameNode<S, A>) =
+            if (trackPredecessors) predecessors[node]
+            else throw UnsupportedOperationException("Predecessors are not tracked for this instance")
+    }
+
+
+    fun computeAbstraction(prec: P, trackPredecessors: Boolean = false): AbstractionResult<S, A> {
 
         val rewardFunMax = object : GameRewardFunction<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>> {
             override fun getStateReward(n: BestTransformerGameNode<S, A>): Double {
@@ -155,79 +248,17 @@ class BestTransformerAbstractor<S : State, A : Action, P : Prec>(
         }
 
 
-        val game = object : ImplicitStochasticGame<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>() {
-            private val _initialNode: BestTransformerGameNode<S, A>
+        val game = BestTransformerGame(
+            prec,
+            trackPredecessors,
+            lts,
+            init,
+            transFunc,
+            targetExpr,
+            maySatisfy,
+            mustSatisfy,
+        )
 
-            init {
-                val initState = init.getInitStates(prec).first() // TODO: cannot handle multiple abstract inits yet
-                val mayBeTarget = maySatisfy(initState, targetExpr)
-                val mustBeTarget = mustSatisfy(initState, targetExpr)
-                _initialNode = AbstractionChoiceNode(
-                    initState,
-                    if (mayBeTarget) 1 else 0,
-                    if (mustBeTarget) 1 else 0,
-                    targetExpr,
-                    null,
-                    mustBeTarget
-                )
-            }
-
-            override val initialNode: BestTransformerGameNode<S, A>
-                get() = _initialNode
-
-            val transFuncCache = hashMapOf<BestTransformerGameNode<S, A>, Collection<BestTransformerGameAction<S, A>>>()
-            override fun getAvailableActions(node: BestTransformerGameNode<S, A>): Collection<BestTransformerGameAction<S, A>> {
-                when (node) {
-                    is AbstractionChoiceNode -> {
-                        if (node.absorbing) return listOf()
-                        return transFuncCache.getOrPut(node) {
-                            val commands = lts.getAvailableCommands(node.s).toList()
-                            val choices = transFunc.getNextStates(node.s, commands, prec)
-                            return@getOrPut choices.map { AbstractionChoice(it.toMap()) }
-                        }
-                    }
-
-                    is ConcreteChoiceNode -> return node.commandResults.keys.map { ConcreteChoice(it) }
-                }
-            }
-
-            override fun getResult(
-                node: BestTransformerGameNode<S, A>,
-                action: BestTransformerGameAction<S, A>
-            ): FiniteDistribution<BestTransformerGameNode<S, A>> {
-                return when (node) {
-                    is AbstractionChoiceNode -> {
-                        when (action) {
-                            is AbstractionChoice -> return dirac(ConcreteChoiceNode(action.commandResults))
-                            is ConcreteChoice -> throw IllegalArgumentException()
-                        }
-                    }
-
-                    is ConcreteChoiceNode -> {
-                        when (action) {
-                            is AbstractionChoice -> throw IllegalArgumentException()
-                            is ConcreteChoice -> node.commandResults[action.command]!!.transform {
-                                val mayBeTarget = maySatisfy(it.second, targetExpr)
-                                val mustBeTarget = mustSatisfy(it.second, targetExpr)
-                                require(mustBeTarget == mayBeTarget) {
-                                    "The abstraction must be exact with respect to the target labels/rewards for now"
-                                }
-                                AbstractionChoiceNode(
-                                    it.second,
-                                    if (mayBeTarget) 1 else 0,
-                                    if (mustBeTarget) 1 else 0,
-                                    targetExpr,
-                                    null,
-                                    mustBeTarget
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            override fun getPlayer(node: BestTransformerGameNode<S, A>) = node.player
-        }
         return AbstractionResult(game, rewardFunMin, rewardFunMax)
     }
 

@@ -3,9 +3,11 @@ package hu.bme.mit.theta.prob.analysis.besttransformer
 import hu.bme.mit.theta.analysis.InitFunc
 import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
+import hu.bme.mit.theta.analysis.expl.ItpRefToExplPrec
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
-import hu.bme.mit.theta.analysis.expr.refinement.Refutation
+import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceBwBinItpChecker
+import hu.bme.mit.theta.analysis.expr.refinement.ItpRefutation
 import hu.bme.mit.theta.analysis.pred.PredAbstractors
 import hu.bme.mit.theta.analysis.pred.PredInitFunc
 import hu.bme.mit.theta.analysis.pred.PredPrec
@@ -14,6 +16,7 @@ import hu.bme.mit.theta.common.visualization.writer.GraphvizWriter
 import hu.bme.mit.theta.core.decl.Decls
 import hu.bme.mit.theta.core.stmt.Stmts.Assign
 import hu.bme.mit.theta.core.type.Expr
+import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.And
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.inttype.IntExprs.*
@@ -36,7 +39,7 @@ import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import org.junit.Test
 import java.awt.Color
 
-class BestTransformerAbstractorTest {
+class BestTransformerAbstractionTest {
 
     val A = Decls.Var("A", Int())
     val B = Decls.Var("B", Int())
@@ -211,14 +214,16 @@ class BestTransformerAbstractorTest {
         simpleSetup()
 
         val initPrec = ExplPrec.of(listOf(A))
-        val abstraction = explAbstractor.computeAbstraction(initPrec)
+        val abstraction = explAbstractor.computeAbstraction(initPrec, true)
         val (lower, upper) = computeValues(abstraction)
 
-        val refiner = BestTransformerRefiner<ExplState, StmtAction, ExplPrec, Refutation>(solver, {
+        val itpSolver = Z3SolverFactory.getInstance().createItpSolver()
+        val traceChecker = ExprTraceBwBinItpChecker.create(fullInit.toExpr(), BoolExprs.True(), itpSolver)
+        val refToPrec = ItpRefToExplPrec()
+        val pivotSelectionStrategy = ReachableMostUncertain()
+        val refiner = BestTransformerRefiner<ExplState, StmtAction, ExplPrec, ItpRefutation>(solver, {
             this.join(ExplPrec.of(ExprUtils.getVars(it)))
-        }, { sg, refinableNodes, valueFunctionMax, valueFunctionMin ->
-            refinableNodes.maxByOrNull { valueFunctionMax[it]!! - valueFunctionMin[it]!! }!!
-        })
+        }, pivotSelectionStrategy, true, traceChecker, refToPrec)
 
         val (newPrec, pivot) = refiner.refine(abstraction.game, upper.first, lower.first, upper.second, lower.second, initPrec)
         println(pivot)

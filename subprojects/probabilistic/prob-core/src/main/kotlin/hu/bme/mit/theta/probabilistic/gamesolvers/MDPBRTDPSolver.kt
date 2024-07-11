@@ -2,33 +2,64 @@ package hu.bme.mit.theta.probabilistic.gamesolvers
 
 import hu.bme.mit.theta.probabilistic.*
 import java.util.*
+import kotlin.math.max
 import kotlin.math.min
 
-class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
+class MDPBRTDPSolver<N : ExpandableNode<N>, A>(
     val rewardFunction: TargetRewardFunction<N, A>,
     val successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N,
     val threshold: Double = 1e-7,
+    val convergeEachStep: Boolean = false,
+    val updateStrategy: UpdateStrategy = UpdateStrategy.TRACE,
     val progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
-     = { _,_,_,_ -> }
-): StochasticGameSolver<N, A> {
+    = { _, _, _, _ -> }
+) : StochasticGameSolver<N, A> {
+
+    /**
+     * Specifies which values to update after simulating a trace
+     */
+    enum class UpdateStrategy {
+        /**
+         * Update only the nodes on the simulated trace
+         */
+        TRACE,
+
+        /**
+         * Always update all nodes that have already been explored
+         */
+        ALL,
+
+        /**
+         * Updates only the trace by default, but if no new nodes have been found with the current simulation,
+         * then updates all explored nodes
+         */
+        DYNAMIC,
+
+        /**
+         * Updates the trace, and propagates the changes to the ancestors (only for those nodes where something changed)
+         */
+        PROPAGATE_TRACE
+    }
 
     companion object {
-        fun <N: ExpandableNode<N>, A> supplier(
+        fun <N : ExpandableNode<N>, A> supplier(
             threshold: Double,
             successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N,
+            convergeEachStep: Boolean = false,
+            updateStrategy: UpdateStrategy = UpdateStrategy.TRACE,
             progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
-            = { _,_,_,_ -> }
-        ) = {
-                rewardFunction: GameRewardFunction<N, A>,
-                initializer: SGSolutionInitializer<N, A> ->
-            require(rewardFunction is TargetRewardFunction<N, A>) {"BRTDP implemented only for reachability yet"}
-            MDPBRTDPSolver(rewardFunction, successorSelection, threshold, progressReport)
+            = { _, _, _, _ -> }
+        ) = { rewardFunction: GameRewardFunction<N, A>,
+              initializer: SGSolutionInitializer<N, A> ->
+            require(rewardFunction is TargetRewardFunction<N, A>) { "BRTDP implemented only for reachability yet" }
+            MDPBRTDPSolver(rewardFunction, successorSelection, threshold, convergeEachStep, updateStrategy, progressReport)
         }
     }
 
     override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
         val game = analysisTask.game
         val initNode = game.initialNode
+        require(!initNode.isExpanded()) { "Game already explored before BRTDP was called!" }
         val goal = analysisTask.goal(game.getPlayer(initNode))
         val reachedSet = hashSetOf(initNode)
 
@@ -40,6 +71,7 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
         val merged = hashMapOf<N, Pair<Set<N>, Collection<A>>>()
 
         var i = 0
+        var lastExploredSize = 0
 
         while (U[initNode]!! - L[initNode]!! > threshold) {
             // ---------------------------------------------------------------------------------------------------------
@@ -95,11 +127,17 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
                 val node = revisitedNodes.first()
 
                 val mec = findMEC(node, game)
-                val edgesLeavingMEC = mec.flatMap {n ->
-                    if(!n.isExpanded()) listOf()
+                val edgesLeavingMEC = mec.flatMap { n ->
+                    if (!n.isExpanded()) listOf()
                     else game.getAvailableActions(n).filter { a -> game.getResult(n, a).support.any { it !in mec } }
                 }
-                val zero = mec.all { it.isExpanded() && !rewardFunction.isTarget(it) } && (goal == Goal.MIN || edgesLeavingMEC.isEmpty())
+                val zero =
+                    mec.all { it.isExpanded() && !rewardFunction.isTarget(it) } && (
+                            (goal == Goal.MIN && (
+                                    mec.size > 1 || game.getAvailableActions(mec.first()).any {
+                                        game.getResult(mec.first(), it).support.let { it.size == 1 && it.first() == mec.first() }
+                                    }))
+                                    || edgesLeavingMEC.isEmpty())
                 for (n in mec) {
                     merged[n] = mec to edgesLeavingMEC
                     if (zero) U[n] = 0.0
@@ -110,26 +148,39 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
             val Unew = HashMap(U)
             val Lnew = HashMap(L)
             // value propagation using the merged map
-            for (node in trace.reversed()) {
-                // TODO: based on rewards
-                val unew = if (Unew[node] == 0.0) 0.0 else (goal.select(
-                    merged[node]!!.second.map {
-                        game.getResult(node, it).expectedValue { U.getValue(it) }
-                    }
-                ) ?: 1.0)
-                val lnew = if (Lnew[node] == 1.0) 1.0 else (goal.select(
-                    merged[node]!!.second.map {
-                        game.getResult(node, it).expectedValue { L.getValue(it) }
-                    }
-                ) ?: 0.0)
+            var i = 0
+            if(updateStrategy == UpdateStrategy.PROPAGATE_TRACE) TODO("Propagating strategy not implemented yet")
+            val toUpdate = if(
+                updateStrategy == UpdateStrategy.ALL || (updateStrategy == UpdateStrategy.DYNAMIC && reachedSet.size == lastExploredSize)
+                ) reachedSet else trace.reversed()
+            do {
+                var maxUDiff = 0.0
+                var maxLDiff = 0.0
+                for (node in toUpdate) {
+                    // TODO: based on rewards
+                    val unew = if (Unew[node] == 0.0) 0.0 else (goal.select(
+                        merged[node]!!.second.map {
+                            game.getResult(node, it).expectedValue { U.getValue(it) }
+                        }
+                    ) ?: 1.0)
+                    maxUDiff = max(maxUDiff, Unew[node]!! - unew)
+                    val lnew = if (Lnew[node] == 1.0) 1.0 else (goal.select(
+                        merged[node]!!.second.map {
+                            game.getResult(node, it).expectedValue { L.getValue(it) }
+                        }
+                    ) ?: 0.0)
+                    maxLDiff = max(maxLDiff, lnew - Lnew[node]!!)
 
-                for (siblingNode in merged[node]!!.first) {
-                    Unew[siblingNode] = unew
-                    Lnew[siblingNode] = lnew
+                    for (siblingNode in merged[node]!!.first) {
+                        Unew[siblingNode] = unew
+                        Lnew[siblingNode] = lnew
+                    }
                 }
-            }
+                i++
+            } while (convergeEachStep && (maxUDiff > threshold || maxLDiff > threshold))
             U = Unew
             L = Lnew
+            lastExploredSize = reachedSet.size
         }
 
         return U
@@ -181,8 +232,8 @@ class MDPBRTDPSolver<N: ExpandableNode<N>, A>(
 
         var scc: Set<N> = hashSetOf()
         val origAvailableEdges: (N) -> Collection<A> =
-            { if(it.isExpanded()) game.getAvailableActions(it) else arrayListOf() }
-            // TODO("will this work?")
+            { if (it.isExpanded()) game.getAvailableActions(it) else arrayListOf() }
+        // TODO("will this work?")
         var availableEdges = origAvailableEdges
         do {
             val prevSCC = scc

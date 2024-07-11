@@ -18,16 +18,9 @@ fun explMaySatisfy(s: ExplState, expr: Expr<BoolType>): Boolean {
     return !ExprUtils.simplify(expr, s).equals(False())
 }
 
-fun explMaySatisfy(expr: Expr<BoolType>) = {
-    s: ExplState -> explMaySatisfy(s, expr)
-}
-
 fun explMustSatisfy(s: ExplState, expr: Expr<BoolType>): Boolean {
     return ExprUtils.simplify(expr, s).equals(True())
 }
-
-fun explMustSatisfy(targetExpr: Expr<BoolType>) = { s: ExplState -> explMustSatisfy(s, targetExpr) }
-
 
 fun predCanBeDisabled(s: PredState, guard: Expr<BoolType>, solver: Solver): Boolean {
     WithPushPop(solver).use {

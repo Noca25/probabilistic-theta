@@ -47,7 +47,6 @@ class BasicBestTransformerTransFunc<S : State, A : Action, P : Prec>(
             }
             val actions: List<A> = config.flatMap { it.result.support }
             val nexts = baseTransFunc.getSuccStates(currState, fullPrecond, actions, prec)
-            var i = 0
             for (next in nexts) {
                 val possibleFullResult = arrayListOf<Pair<ProbabilisticCommand<A>, FiniteDistribution<Pair<A, S>>>>()
                 val actionToResult = actions.zip(next).toMap()

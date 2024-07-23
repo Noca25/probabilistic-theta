@@ -66,6 +66,7 @@ class BestTransformerAbstractor<S : State, A : Action, P : Prec>(
     val targetExpr: Expr<BoolType>,
     val maySatisfy: (S, Expr<BoolType>) -> Boolean,
     val mustSatisfy: (S, Expr<BoolType>) -> Boolean,
+    val trackPredecessors: Boolean = false
 ) {
     sealed class BestTransformerGameNode<S : State, A : Action>(val player: Int) {
         data class AbstractionChoiceNode<S : State, A : Action>(
@@ -208,7 +209,7 @@ class BestTransformerAbstractor<S : State, A : Action, P : Prec>(
     }
 
 
-    fun computeAbstraction(prec: P, trackPredecessors: Boolean = false): AbstractionResult<S, A> {
+    fun computeAbstraction(prec: P): AbstractionResult<S, A> {
 
         val rewardFunMax = object : GameRewardFunction<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>> {
             override fun getStateReward(n: BestTransformerGameNode<S, A>): Double {

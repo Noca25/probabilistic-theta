@@ -13,10 +13,7 @@ import hu.bme.mit.theta.analysis.expl.ExplInitFunc
 import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ItpRefToExplPrec
 import hu.bme.mit.theta.analysis.expr.ExprState
-import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceBwBinItpChecker
-import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceChecker
-import hu.bme.mit.theta.analysis.expr.refinement.Refutation
-import hu.bme.mit.theta.analysis.expr.refinement.RefutationToPrec
+import hu.bme.mit.theta.analysis.expr.refinement.*
 import hu.bme.mit.theta.analysis.pred.*
 import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.core.type.Expr
@@ -191,7 +188,8 @@ class JaniCLI : CliktCommand() {
         model: SMDP,
     ) : Double {
         val traceChecker =
-            ExprTraceBwBinItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
+            if(sequenceInterpolation) ExprTraceSeqItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
+            else ExprTraceBwBinItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
         return when(domain) {
             PRED -> return menuHelper(
                 solver,
@@ -277,7 +275,8 @@ class JaniCLI : CliktCommand() {
             transFunc,
             task.targetExpr,
             maySatisfy,
-            mustSatisfy
+            mustSatisfy,
+            eliminateSpurious
         )
 
         val refiner = MenuGameRefiner<SMDPState<D>, SMDPCommandAction, P, R>(
@@ -303,7 +302,9 @@ class JaniCLI : CliktCommand() {
         task: SMDPReachabilityTask,
         model: SMDP
     ): Double {
-        val traceChecker = ExprTraceBwBinItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
+        val traceChecker =
+            if(sequenceInterpolation) ExprTraceSeqItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
+            else ExprTraceBwBinItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
         return when(domain) {
             PRED -> bestTransformerHelper(
                 solver, itpSolver, ucSolver, task, model,
@@ -386,7 +387,8 @@ class JaniCLI : CliktCommand() {
             transFunc,
             task.targetExpr,
             maySatisfy,
-            mustSatisfy
+            mustSatisfy,
+            eliminateSpurious
         )
 
         val refiner = BestTransformerRefiner<SMDPState<D>, SMDPCommandAction, P, R>(

@@ -87,7 +87,8 @@ class BestTransformerAbstractionTest {
             explLts, explInit, explTransFunc,
             targetExpr,
             ::explMaySatisfy,
-            ::explMustSatisfy
+            ::explMustSatisfy,
+            true
         )
 
         predTransFunc =
@@ -214,7 +215,7 @@ class BestTransformerAbstractionTest {
         simpleSetup()
 
         val initPrec = ExplPrec.of(listOf(A))
-        val abstraction = explAbstractor.computeAbstraction(initPrec, true)
+        val abstraction = explAbstractor.computeAbstraction(initPrec)
         val (lower, upper) = computeValues(abstraction)
 
         val itpSolver = Z3SolverFactory.getInstance().createItpSolver()

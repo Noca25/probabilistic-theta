@@ -6,6 +6,7 @@ import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
+import hu.bme.mit.theta.analysis.expr.refinement.ItpRefutation
 import hu.bme.mit.theta.analysis.pred.PredAbstractors
 import hu.bme.mit.theta.analysis.pred.PredInitFunc
 import hu.bme.mit.theta.analysis.pred.PredPrec
@@ -100,7 +101,7 @@ class MenuGameAbstractionTest {
         val (lowerValues, upperValues) = computeValues(abstraction)
 
         // checked manually
-        testViz(abstraction.game, lowerValues, upperValues)
+        testViz(abstraction.game, lowerValues.first, upperValues.first)
     }
 
     private fun <S: ExprState> testViz(
@@ -123,29 +124,38 @@ class MenuGameAbstractionTest {
 
     private fun <S: ExprState> computeValues(
         abstraction: MenuGameAbstractor.AbstractionResult<S, StmtAction>
-    ): Pair<Map<MenuGameNode<S, StmtAction>, Double>, Map<MenuGameNode<S, StmtAction>, Double>> {
+    ): Pair<
+            Pair<
+                    Map<MenuGameNode<S, StmtAction>, Double>,
+                    Map<MenuGameNode<S, StmtAction>, MenuGameAction<S, StmtAction>>
+                    >,
+            Pair<
+                    Map<MenuGameNode<S, StmtAction>, Double>,
+                    Map<MenuGameNode<S, StmtAction>, MenuGameAction<S, StmtAction>>
+                    >
+            > {
         val lowerAnalysisTask =
             AnalysisTask(abstraction.game, setGoal(P_CONCRETE to Goal.MAX, P_ABSTRACTION to Goal.MIN))
-        val lowerValues = VISolver(
+        val lowerSolution = VISolver(
             abstraction.rewardMin,
             TargetSetLowerInitializer {
                 it is MenuGameNode.StateNode && abstraction.rewardMin(it) == 1.0
             },
             1e-6,
             false
-        ).solve(lowerAnalysisTask)
+        ).solveWithStrategy(lowerAnalysisTask)
 
         val upperAnalysisTask =
             AnalysisTask(abstraction.game, setGoal(P_CONCRETE to Goal.MAX, P_ABSTRACTION to Goal.MAX))
-        val upperValues = VISolver(
+        val upperSolution = VISolver(
             abstraction.rewardMax,
             TargetSetLowerInitializer {
                 it is MenuGameNode.StateNode && abstraction.rewardMax(it) == 1.0
             },
             1e-6,
             false
-        ).solve(upperAnalysisTask)
-        return Pair(lowerValues, upperValues)
+        ).solveWithStrategy(upperAnalysisTask)
+        return Pair(lowerSolution, upperSolution)
     }
 
     @Test
@@ -215,8 +225,8 @@ class MenuGameAbstractionTest {
             }
             assert(abstractNodes.isNotEmpty())
             for (abstractNode in abstractNodes) {
-                assert(lower2[refinedNode]!! >= lower1[abstractNode]!!)
-                assert(upper2[refinedNode]!! <= upper1[abstractNode]!!)
+                assert(lower2.first[refinedNode]!! >= lower1.first[abstractNode]!!)
+                assert(upper2.first[refinedNode]!! <= upper1.first[abstractNode]!!)
             }
         }
 
@@ -229,8 +239,8 @@ class MenuGameAbstractionTest {
             }
             assert(abstractNodes.isNotEmpty())
             for (abstractNode in abstractNodes) {
-                assert(lower3[refinedNode]!! >= lower2[abstractNode]!!)
-                assert(upper3[refinedNode]!! <= upper2[abstractNode]!!)
+                assert(lower3.first[refinedNode]!! >= lower2.first[abstractNode]!!)
+                assert(upper3.first[refinedNode]!! <= upper2.first[abstractNode]!!)
             }
         }
     }
@@ -243,11 +253,18 @@ class MenuGameAbstractionTest {
         val abstraction = explAbstractor.computeAbstraction(initPrec)
         val (lower, upper) = computeValues(abstraction)
 
-        val refiner = MenuGameRefiner<ExplState, StmtAction, ExplPrec>(solver) {
+        val refiner = MenuGameRefiner<ExplState, StmtAction, ExplPrec, ItpRefutation>(solver, {
             this.join(ExplPrec.of(ExprUtils.getVars(it)))
-        }
+        })
 
-        val (newPrec, pivot) = refiner.refine(abstraction.game, upper, lower, initPrec)
+        val (newPrec, pivot) = refiner.refine(
+            abstraction.game,
+            upper.first,
+            lower.first,
+            upper.second,
+            lower.second,
+            initPrec
+        )
         println(pivot)
         println(newPrec)
 
@@ -257,9 +274,9 @@ class MenuGameAbstractionTest {
     @Test
     fun cegarTestExpl() {
         simpleSetup()
-        val refiner = MenuGameRefiner<ExplState, StmtAction, ExplPrec>(solver) {
+        val refiner = MenuGameRefiner<ExplState, StmtAction, ExplPrec, ItpRefutation>(solver, {
             this.join(ExplPrec.of(ExprUtils.getVars(it)))
-        }
+        })
 
         val threshold = 1e-6
         val res = MenuGameCegarChecker(explAbstractor, refiner, VISolver.supplier(threshold/2, false))
@@ -292,11 +309,18 @@ class MenuGameAbstractionTest {
         val abstraction = predAbstractor.computeAbstraction(initPrec)
         val (lower, upper) = computeValues(abstraction)
 
-        val refiner = MenuGameRefiner<PredState, StmtAction, PredPrec>(solver) {
+        val refiner = MenuGameRefiner<PredState, StmtAction, PredPrec, ItpRefutation>(solver, {
             this.join(PredPrec.of(ExprUtils.getAtoms(it)))
-        }
+        })
 
-        val (newPrec, pivot) = refiner.refine(abstraction.game, upper, lower, initPrec)
+        val (newPrec, pivot) = refiner.refine(
+            abstraction.game,
+            upper.first,
+            lower.first,
+            upper.second,
+            lower.second,
+            initPrec
+        )
         println(pivot)
         println(newPrec)
     }
@@ -304,9 +328,9 @@ class MenuGameAbstractionTest {
     @Test
     fun cegarTestPred() {
         simpleSetup()
-        val refiner = MenuGameRefiner<PredState, StmtAction, PredPrec>(solver) {
+        val refiner = MenuGameRefiner<PredState, StmtAction, PredPrec, ItpRefutation>(solver, {
             this.join(PredPrec.of(ExprUtils.getAtoms(it)))
-        }
+        })
 
         val threshold = 1e-6
         val res = MenuGameCegarChecker(predAbstractor, refiner, VISolver.supplier(threshold/2, false))

@@ -6,6 +6,7 @@ import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.State
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolType
+import hu.bme.mit.theta.prob.analysis.BacktrackableGame
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommandLTS
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
@@ -34,7 +35,29 @@ class MenuGameAbstractor<S : State, A : Action, P : Prec>(
 
         val rewardFunMin = MenuGameLowerRewardFunc<S, A>()
 
-        val game = object : ImplicitStochasticGame<MenuGameNode<S, A>, MenuGameAction<S, A>>() {
+        val game = StandardMenuGame(
+            prec,
+            lts,
+            init,
+            transFunc,
+            targetExpr,
+            maySatisfy,
+            mustSatisfy,
+            )
+
+        return AbstractionResult(game, rewardFunMin, rewardFunMax)
+    }
+
+    class StandardMenuGame<S: State, A: Action, P: Prec>(
+        val prec: P,
+        val lts: ProbabilisticCommandLTS<S, A>,
+        val init: InitFunc<S, P>,
+        val transFunc: MenuGameTransFunc<S, A, P>,
+        val targetExpr: Expr<BoolType>,
+        val maySatisfy: (S, Expr<BoolType>) -> Boolean,
+        val mustSatisfy: (S, Expr<BoolType>) -> Boolean,
+    ) : ImplicitStochasticGame<MenuGameNode<S, A>, MenuGameAction<S, A>>(),
+    BacktrackableGame<MenuGameNode<S, A>>{
 
             private val _initialNode: MenuGameNode<S, A>
 
@@ -121,9 +144,10 @@ class MenuGameAbstractor<S : State, A : Action, P : Prec>(
                 }
             }
 
+        override fun getPreviousNodes(n: MenuGameNode<S, A>): Collection<MenuGameNode<S, A>> {
+            TODO("Not yet implemented")
         }
 
-        return AbstractionResult(game, rewardFunMin, rewardFunMax)
     }
 
 }

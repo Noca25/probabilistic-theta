@@ -22,7 +22,7 @@ class MenuGameBLASTChecker<S : ExprState, A : StmtAction, P : Prec>(
     val maySatisfy: (S, Expr<BoolType>) -> Boolean,
     val mustSatisfy: (S, Expr<BoolType>) -> Boolean,
     val ord: PartialOrd<S>,
-    val refiner: MenuGameRefiner<S, A, P>,
+    val refiner: MenuGameRefiner<S, A, P, *>,
     val extendPrec: P.(P) -> P,
     val gameSolverSupplier: (
         GameRewardFunction<MenuGameNode<S, A>, MenuGameAction<S, A>>
@@ -53,16 +53,23 @@ class MenuGameBLASTChecker<S : ExprState, A : StmtAction, P : Prec>(
             game.fullyExplore()
             val upperAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MAX })
             val lowerAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MIN })
-            val lowerValues = gameSolverSupplier(MenuGameLowerRewardFunc()).solve(lowerAnalysisTask)
-            val upperValues = gameSolverSupplier(MenuGameUpperRewardFunc()).solve(upperAnalysisTask)
-            if (upperValues[game.initialNode]!! - lowerValues[game.initialNode]!! < threshold) {
+            val lowerValues = gameSolverSupplier(MenuGameLowerRewardFunc()).solveWithStrategy(lowerAnalysisTask)
+            val upperValues = gameSolverSupplier(MenuGameUpperRewardFunc()).solveWithStrategy(upperAnalysisTask)
+            if (upperValues.first[game.initialNode]!! - lowerValues.first[game.initialNode]!! < threshold) {
                 return BLASTMenuGameCheckerResult(
-                    lowerValues[game.initialNode]!!,
-                    upperValues[game.initialNode]!!
+                    lowerValues.first[game.initialNode]!!,
+                    upperValues.first[game.initialNode]!!
                 )
             }
             // As the support precision for a given state might be ambiguous, and the
-            val refinementResult = refiner.refine(game, upperValues, lowerValues, initPrec)
+            val refinementResult = refiner.refine(
+                game,
+                upperValues.first,
+                lowerValues.first,
+                upperValues.second,
+                lowerValues.second,
+                initPrec
+            )
             game.refine(refinementResult)
         }
     }

@@ -11,17 +11,16 @@ import hu.bme.mit.theta.analysis.InitFunc
 import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.expl.ExplInitFunc
 import hu.bme.mit.theta.analysis.expl.ExplPrec
-import hu.bme.mit.theta.analysis.expl.ExplState
+import hu.bme.mit.theta.analysis.expl.ItpRefToExplPrec
 import hu.bme.mit.theta.analysis.expr.ExprState
+import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceBwBinItpChecker
 import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceChecker
 import hu.bme.mit.theta.analysis.expr.refinement.Refutation
 import hu.bme.mit.theta.analysis.expr.refinement.RefutationToPrec
-import hu.bme.mit.theta.analysis.pred.PredAbstractors
-import hu.bme.mit.theta.analysis.pred.PredInitFunc
-import hu.bme.mit.theta.analysis.pred.PredPrec
-import hu.bme.mit.theta.analysis.pred.PredState
+import hu.bme.mit.theta.analysis.pred.*
 import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.core.type.Expr
+import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
@@ -127,6 +126,11 @@ class JaniCLI : CliktCommand() {
     val sequenceInterpolation by option("--seq",
         help = "Use sequence interpolation for refinement in lazy abstraction."
     ).flag("--noseq", default = true)
+    val eliminateSpurious by option("--elim",
+        help = "Use interpolation to eliminate (almost-)spurious pivot nodes during game refinement." +
+                "Only used for best transformer abstraction for now."
+    ).flag("--no-elim", default = false)
+
 
     override fun run() {
 
@@ -160,13 +164,15 @@ class JaniCLI : CliktCommand() {
                         continue
                     }
 
-                if (task.goal == Goal.MIN && (domain != NONE && approximation != Approximation.EXACT))
-                    throw RuntimeException("Error: Approximate computation for MIN property ${prop.name} unsupported")
+                // TODO: correct config of may/must separately for standard and target commands should make approximate
+                //  MIN computation correct, but this has not been sufficiently tested yet
+                //if (task.goal == Goal.MIN && (domain != NONE && approximation != Approximation.EXACT))
+                //    throw RuntimeException("Error: Approximate computation for MIN property ${prop.name} unsupported")
 
                 val result = when(abstraction) {
                     AbstractionMethod.LAZY, AbstractionMethod.MENU_LAZY -> lazy(solver, itpSolver, ucSolver, task, model)
                     AbstractionMethod.MENU -> menu(solver, itpSolver, ucSolver, task, model)
-                    AbstractionMethod.BT -> TODO()
+                    AbstractionMethod.BT -> bestTransformer(solver, itpSolver, ucSolver, task, model)
                 }
                 println("result: ${prop.name}: $result")
             } else {
@@ -184,8 +190,10 @@ class JaniCLI : CliktCommand() {
         task: SMDPReachabilityTask,
         model: SMDP,
     ) : Double {
+        val traceChecker =
+            ExprTraceBwBinItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
         return when(domain) {
-            PRED -> return menuHelper<PredState, PredPrec>(
+            PRED -> return menuHelper(
                 solver,
                 itpSolver,
                 ucSolver,
@@ -205,9 +213,12 @@ class JaniCLI : CliktCommand() {
                     Algorithm.BVI -> MDPBVISolver.supplier(threshold)
                     Algorithm.VI -> VISolver.supplier(threshold)
                     Algorithm.BRTDP -> TODO()
-                }
+                },
+                eliminateSpurious,
+                traceChecker,
+                ItpRefToPredPrec(ExprSplitters.atoms())
             )
-            EXPL -> menuHelper<ExplState, ExplPrec>(
+            EXPL -> menuHelper(
                 solver,
                 itpSolver,
                 ucSolver,
@@ -227,13 +238,16 @@ class JaniCLI : CliktCommand() {
                     Algorithm.BVI -> MDPBVISolver.supplier(threshold)
                     Algorithm.VI -> VISolver.supplier(threshold)
                     Algorithm.BRTDP -> TODO()
-                }
+                },
+                eliminateSpurious,
+                traceChecker,
+                ItpRefToExplPrec()
             )
             NONE -> throw IllegalArgumentException("Domain must be selected for menu game abstraction")
         }
     }
 
-    private fun <D: ExprState, P: Prec> menuHelper(
+    private fun <D: ExprState, P: Prec, R: Refutation> menuHelper(
         solver: Solver,
         itpSolver: ItpSolver,
         ucSolver: UCSolver,
@@ -249,7 +263,10 @@ class JaniCLI : CliktCommand() {
         quantSolverSupplier: (
             GameRewardFunction<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>,
                 SGSolutionInitializer<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>
-                ) -> StochasticGameSolver<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>
+                ) -> StochasticGameSolver<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>,
+        eliminateSpurious: Boolean,
+        traceChecker: ExprTraceChecker<R>,
+        refToPrec: RefutationToPrec<P, R>
     ): Double {
         val lts = SmdpCommandLts<D>(model)
         val initFunc = SmdpInitFunc<D, P>(domainInitFunc, model)
@@ -263,7 +280,13 @@ class JaniCLI : CliktCommand() {
             mustSatisfy
         )
 
-        val refiner = MenuGameRefiner<SMDPState<D>, SMDPCommandAction, P>(solver, extend)
+        val refiner = MenuGameRefiner<SMDPState<D>, SMDPCommandAction, P, R>(
+            solver,
+            extend,
+            eliminateSpurious,
+            traceChecker,
+            refToPrec
+        )
 
         val checker = MenuGameCegarChecker(
             abstractor,
@@ -273,7 +296,66 @@ class JaniCLI : CliktCommand() {
         return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
     }
 
-    private fun <D: ExprState, P: Prec, R: Refutation> bestTransformer(
+    private fun bestTransformer(
+        solver: Solver,
+        itpSolver: ItpSolver,
+        ucSolver: UCSolver,
+        task: SMDPReachabilityTask,
+        model: SMDP
+    ): Double {
+        val traceChecker = ExprTraceBwBinItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
+        return when(domain) {
+            PRED -> bestTransformerHelper(
+                solver, itpSolver, ucSolver, task, model,
+                PredInitFunc.create(
+                    PredAbstractors.booleanSplitAbstractor(solver),
+                    model.getFullInitExpr()
+                ),
+                PredLinkedTransFunc(solver),
+                smdpGetGuardSatisfactionConfigs(predGetGuardSatisfactionConfigs(solver)),
+                smdpMaySatisfy(predMaySatisfy(solver)),
+                smdpMustSatisfy(predMustSatisfy(solver)),
+                PredPrec.of(task.targetExpr),
+                {this.join(PredPrec.of(it))},
+                when(algorithm) {
+                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
+                    Algorithm.VI -> VISolver.supplier(threshold)
+                    Algorithm.BRTDP -> TODO()
+                },
+                ReachableMostUncertain(),
+                eliminateSpurious,
+                traceChecker,
+                ItpRefToPredPrec(ExprSplitters.atoms())
+            )
+            EXPL -> bestTransformerHelper(
+                solver, itpSolver, ucSolver, task, model,
+                ExplInitFunc.create(
+                    solver,
+                    model.getFullInitExpr()
+                ),
+                ExplLinkedTransFunc(0, solver),
+                smdpGetGuardSatisfactionConfigs(explGetGuardSatisfactionConfigs(solver)),
+                smdpMaySatisfy(::explMaySatisfy),
+                smdpMustSatisfy(::explMustSatisfy),
+                ExplPrec.of(ExprUtils.getVars(task.targetExpr)),
+                {this.join(ExplPrec.of(ExprUtils.getVars(it)))},
+                when(algorithm) {
+                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
+                    Algorithm.VI -> VISolver.supplier(threshold)
+                    Algorithm.BRTDP -> TODO()
+                },
+                ReachableMostUncertain(),
+                eliminateSpurious,
+                traceChecker,
+                ItpRefToExplPrec()
+            )
+
+            NONE -> throw IllegalArgumentException("Domain must be selected for best transformer game abstraction")
+        }
+
+    }
+
+    private fun <D: ExprState, P: Prec, R: Refutation> bestTransformerHelper(
         solver: Solver,
         itpSolver: ItpSolver,
         ucSolver: UCSolver,
@@ -293,8 +375,8 @@ class JaniCLI : CliktCommand() {
         pivotSelectionStrategy: PivotSelectionStrategy,
         eliminateSpurious: Boolean,
         traceChecker: ExprTraceChecker<R>,
-        refToPrec: RefutationToPrec<P, R>?
-    ): BestTransformerCegarChecker.BestTransformerCheckerResult<SMDPState<D>, SMDPCommandAction, P> {
+        refToPrec: RefutationToPrec<P, R>
+    ): Double {
         val lts = SmdpCommandLts<D>(model)
         val initFunc = SmdpInitFunc<D, P>(domainInitFunc, model)
         val transFunc = BasicBestTransformerTransFunc(SMDPLinkedTransFunc(domainTransFunc), getGuardSatisfactionConfigs)
@@ -316,7 +398,7 @@ class JaniCLI : CliktCommand() {
             refiner,
             quantSolverSupplier
         )
-        return checker.check(initPrec, task.goal, threshold)
+        return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
     }
 
     private fun lazy(

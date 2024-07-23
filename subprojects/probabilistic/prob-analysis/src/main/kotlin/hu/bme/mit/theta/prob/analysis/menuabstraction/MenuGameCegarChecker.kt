@@ -13,7 +13,7 @@ import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerIni
 
 class MenuGameCegarChecker<S : ExprState, A : StmtAction, P : Prec>(
     val abstractor: MenuGameAbstractor<S, A, P>,
-    val refiner: MenuGameRefiner<S, A, P>,
+    val refiner: MenuGameRefiner<S, A, P, *>,
     val gameSolverSupplier: (
         GameRewardFunction<MenuGameNode<S, A>, MenuGameAction<S, A>>,
         SGSolutionInitializer<MenuGameNode<S, A>, MenuGameAction<S, A>>
@@ -38,16 +38,23 @@ class MenuGameCegarChecker<S : ExprState, A : StmtAction, P : Prec>(
             val game = abstraction.game
             val upperAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MAX })
             val lowerAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MIN })
-            val lowerValues = gameSolverSupplier(abstraction.rewardMin, initializer).solve(lowerAnalysisTask)
-            val upperValues = gameSolverSupplier(abstraction.rewardMax, initializer).solve(upperAnalysisTask)
-            if (upperValues[game.initialNode]!! - lowerValues[game.initialNode]!! < threshold) {
+            val lowerValues = gameSolverSupplier(abstraction.rewardMin, initializer).solveWithStrategy(lowerAnalysisTask)
+            val upperValues = gameSolverSupplier(abstraction.rewardMax, initializer).solveWithStrategy(upperAnalysisTask)
+            if (upperValues.first[game.initialNode]!! - lowerValues.first[game.initialNode]!! < threshold) {
                 return MenuGameCheckerResult(
                     currPrec,
-                    lowerValues[game.initialNode]!!,
-                    upperValues[game.initialNode]!!
+                    lowerValues.first[game.initialNode]!!,
+                    upperValues.first[game.initialNode]!!
                 )
             }
-            currPrec = refiner.refine(game, upperValues, lowerValues, currPrec).newPrec
+            currPrec = refiner.refine(
+                game,
+                upperValues.first,
+                lowerValues.first,
+                upperValues.second,
+                lowerValues.second,
+                currPrec
+            ).newPrec
         }
     }
 

@@ -1,6 +1,7 @@
 package hu.bme.mit.theta.prob.analysis.besttransformer
 
 import hu.bme.mit.theta.analysis.expl.ExplState
+import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.analysis.pred.PredState
 import hu.bme.mit.theta.core.decl.ConstDecl
@@ -13,6 +14,8 @@ import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs.And
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.jani.SMDPCommandAction
+import hu.bme.mit.theta.prob.analysis.jani.SMDPState
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.utils.WithPushPop
 
@@ -114,3 +117,7 @@ fun <A : StmtAction> predGetGuardSatisfactionConfigs(solver: Solver) =
         }
         return res
     }
+
+fun <D: ExprState> smdpGetGuardSatisfactionConfigs(
+    baseGetGuardSatisfactionConfigs: (state: D, commands: List<ProbabilisticCommand<SMDPCommandAction>>) -> List<List<ProbabilisticCommand<SMDPCommandAction>>>
+) = fun(state: SMDPState<D>, commands: List<ProbabilisticCommand<SMDPCommandAction>>) = baseGetGuardSatisfactionConfigs(state.domainState, commands)

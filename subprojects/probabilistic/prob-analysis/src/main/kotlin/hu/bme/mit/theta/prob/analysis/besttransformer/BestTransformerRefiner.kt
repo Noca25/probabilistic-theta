@@ -142,7 +142,7 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
         val next = hashMapOf<BestTransformerGameNode<S, A>, BestTransformerGameNode<S, A>>()
         while (changed.isNotEmpty()) {
             val node = changed.poll()
-            for (prevNode in sg.getPreviousNodes(node)!!) {
+            for (prevNode in sg.getPreviousNodes(node)) {
                 val chosenAction = strategy[prevNode]!!
                 val res = sg.getResult(prevNode, chosenAction)
                 val pp = res[node]

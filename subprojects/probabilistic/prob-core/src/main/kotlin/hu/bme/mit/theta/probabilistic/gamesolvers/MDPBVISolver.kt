@@ -73,9 +73,7 @@ class MDPBVISolver<N, A>(
         val game = analysisTask.game
         val initNode = game.initialNode
         val initGoal = goal(game.getPlayer(initNode))
-        require(initGoal == Goal.MAX) {
-            "Only maximization supported with BVI for now, merging might need to be adjusted for MIN, not tested yet"
-        }
+        //require(initGoal == Goal.MAX) { "Only maximization supported with BVI for now, merging might need to be adjusted for MIN, not tested yet" }
         val nodes = game.getAllNodes()
         val mecs = computeMECs(game)
 

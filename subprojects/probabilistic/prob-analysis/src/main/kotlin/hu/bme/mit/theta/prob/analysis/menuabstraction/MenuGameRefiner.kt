@@ -7,8 +7,6 @@ import hu.bme.mit.theta.core.stmt.SequenceStmt
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.utils.WpState
-import hu.bme.mit.theta.prob.analysis.menuabstraction.MenuGameAbstractor.MenuGameAction
-import hu.bme.mit.theta.prob.analysis.menuabstraction.MenuGameAbstractor.MenuGameNode
 import hu.bme.mit.theta.probabilistic.StochasticGame
 import hu.bme.mit.theta.solver.Solver
 
@@ -30,6 +28,21 @@ class MenuGameRefiner<S: ExprState, A: StmtAction, P: Prec>(
         valueFunctionMax: Map<MenuGameNode<S, A>, Double>,
         valueFunctionMin: Map<MenuGameNode<S, A>, Double>,
         prec: P,
+        nodesToConsider: Collection<MenuGameNode.StateNode<S, A>>
+        = sg.getAllNodes().filterIsInstance<MenuGameNode.StateNode<S, A>>(),
+        tolerance: Double = 0.0
+    ): RefinementResult<S, A, P> {
+        return refine(sg, valueFunctionMax, valueFunctionMin, {prec}, nodesToConsider, tolerance)
+    }
+
+    fun  refine(
+        sg: StochasticGame<
+                MenuGameNode<S, A>,
+                MenuGameAction<S, A>
+                >,
+        valueFunctionMax: Map<MenuGameNode<S, A>, Double>,
+        valueFunctionMin: Map<MenuGameNode<S, A>, Double>,
+        prec: (MenuGameNode<S,A>) -> P,
         nodesToConsider: Collection<MenuGameNode.StateNode<S, A>>
             = sg.getAllNodes().filterIsInstance<MenuGameNode.StateNode<S, A>>(),
         tolerance: Double = 0.0
@@ -76,7 +89,7 @@ class MenuGameRefiner<S: ExprState, A: StmtAction, P: Prec>(
         if (resnodeToRefine == null) throw IllegalArgumentException("Unable to refine menu game, no refinable node found")
         val diff = minMaxChoiceDifference(resnodeToRefine)
 
-        var newPrec = prec
+        var newPrec = prec(resnodeToRefine)
         for(abstractionDecision in diff) {
             when(abstractionDecision){
                 is MenuGameAction.EnterTrap -> {

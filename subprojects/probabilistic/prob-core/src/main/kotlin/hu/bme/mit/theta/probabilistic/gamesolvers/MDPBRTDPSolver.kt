@@ -233,7 +233,6 @@ class MDPBRTDPSolver<N : ExpandableNode<N>, A>(
         var scc: Set<N> = hashSetOf()
         val origAvailableEdges: (N) -> Collection<A> =
             { if (it.isExpanded()) game.getAvailableActions(it) else arrayListOf() }
-        // TODO("will this work?")
         var availableEdges = origAvailableEdges
         do {
             val prevSCC = scc

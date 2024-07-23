@@ -8,6 +8,7 @@ dependencies {
     implementation(project(":theta-prob-analysis"))
     implementation(project(":theta-prob-core"))
     implementation(project(":theta-core"))
+    implementation(project(":theta-analysis"))
 
     implementation("com.github.ajalt.clikt:clikt:3.4.0")
 }

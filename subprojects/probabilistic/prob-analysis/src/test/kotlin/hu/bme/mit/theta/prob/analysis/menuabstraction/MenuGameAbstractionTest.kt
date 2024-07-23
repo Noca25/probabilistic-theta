@@ -104,9 +104,9 @@ class MenuGameAbstractionTest {
     }
 
     private fun <S: ExprState> testViz(
-        sg: StochasticGame<MenuGameAbstractor.MenuGameNode<S, StmtAction>, MenuGameAbstractor.MenuGameAction<S, StmtAction>>,
-        lowerValues: Map<MenuGameAbstractor.MenuGameNode<S, StmtAction>, Double>,
-        upperValues: Map<MenuGameAbstractor.MenuGameNode<S, StmtAction>, Double>
+        sg: StochasticGame<MenuGameNode<S, StmtAction>, MenuGameAction<S, StmtAction>>,
+        lowerValues: Map<MenuGameNode<S, StmtAction>, Double>,
+        upperValues: Map<MenuGameNode<S, StmtAction>, Double>
     ) {
         val materResult = sg.materialize()
         val viz = GraphvizWriter.getInstance().writeString(
@@ -114,7 +114,7 @@ class MenuGameAbstractionTest {
                 lowerValues.mapKeys { materResult.second[it.key]!! },
                 upperValues.mapKeys { materResult.second[it.key]!! },
                 sg.getAllNodes().filter {
-                    it is MenuGameAbstractor.MenuGameNode.StateNode && it.maxReward == 1
+                    it is MenuGameNode.StateNode && it.maxReward == 1
                 }.map { materResult.second[it]!! }.associateWith { Color(255, 150, 150) }
             )
         )
@@ -123,13 +123,13 @@ class MenuGameAbstractionTest {
 
     private fun <S: ExprState> computeValues(
         abstraction: MenuGameAbstractor.AbstractionResult<S, StmtAction>
-    ): Pair<Map<MenuGameAbstractor.MenuGameNode<S, StmtAction>, Double>, Map<MenuGameAbstractor.MenuGameNode<S, StmtAction>, Double>> {
+    ): Pair<Map<MenuGameNode<S, StmtAction>, Double>, Map<MenuGameNode<S, StmtAction>, Double>> {
         val lowerAnalysisTask =
             AnalysisTask(abstraction.game, setGoal(P_CONCRETE to Goal.MAX, P_ABSTRACTION to Goal.MIN))
         val lowerValues = VISolver(
             abstraction.rewardMin,
             TargetSetLowerInitializer {
-                it is MenuGameAbstractor.MenuGameNode.StateNode && abstraction.rewardMin(it) == 1.0
+                it is MenuGameNode.StateNode && abstraction.rewardMin(it) == 1.0
             },
             1e-6,
             false
@@ -140,7 +140,7 @@ class MenuGameAbstractionTest {
         val upperValues = VISolver(
             abstraction.rewardMax,
             TargetSetLowerInitializer {
-                it is MenuGameAbstractor.MenuGameNode.StateNode && abstraction.rewardMax(it) == 1.0
+                it is MenuGameNode.StateNode && abstraction.rewardMax(it) == 1.0
             },
             1e-6,
             false
@@ -159,11 +159,11 @@ class MenuGameAbstractionTest {
         assert(nodes.all { it.player ==  P_CONCRETE || sg.getAvailableActions(it).size == 1})
         val initialNode = sg.initialNode
         assert(
-            initialNode is MenuGameAbstractor.MenuGameNode.StateNode &&
+            initialNode is MenuGameNode.StateNode &&
                     initialNode.s == createState(A to 0, B to 0, C to 0)
         )
         assert(sg.getAllNodes().none {
-            sg.getAvailableActions(it).let { it.size > 1 && it.any { it is MenuGameAbstractor.MenuGameAction.EnterTrap } }
+            sg.getAvailableActions(it).let { it.size > 1 && it.any { it is MenuGameAction.EnterTrap } }
         })
 
         checkAndViz(abstraction)
@@ -176,7 +176,7 @@ class MenuGameAbstractionTest {
         val sg = abstraction.game
         val initialNode = sg.initialNode
         assert(
-            initialNode is MenuGameAbstractor.MenuGameNode.StateNode &&
+            initialNode is MenuGameNode.StateNode &&
                     initialNode.s == createState(A to 0, B to 0)
         )
 
@@ -190,7 +190,7 @@ class MenuGameAbstractionTest {
         val sg = abstraction.game
 
         val initialNode = sg.initialNode
-        assert(initialNode is MenuGameAbstractor.MenuGameNode.StateNode && initialNode.s == createState(A to 0))
+        assert(initialNode is MenuGameNode.StateNode && initialNode.s == createState(A to 0))
 
         checkAndViz(abstraction)
     }
@@ -207,9 +207,9 @@ class MenuGameAbstractionTest {
         val (lower3, upper3) = computeValues(abstraction3)
 
         for (refinedNode in abstraction2.game.getAllNodes()
-            .filterIsInstance<MenuGameAbstractor.MenuGameNode.StateNode<ExplState,StmtAction>>()) {
+            .filterIsInstance<MenuGameNode.StateNode<ExplState,StmtAction>>()) {
             val abstractNodes = abstraction1.game.getAllNodes()
-                .filterIsInstance<MenuGameAbstractor.MenuGameNode.StateNode<ExplState,StmtAction>>()
+                .filterIsInstance<MenuGameNode.StateNode<ExplState,StmtAction>>()
                 .filter {
                     ExplOrd.getInstance().isLeq(refinedNode.s, it.s)
             }
@@ -221,9 +221,9 @@ class MenuGameAbstractionTest {
         }
 
         for (refinedNode in abstraction3.game.getAllNodes()
-            .filterIsInstance<MenuGameAbstractor.MenuGameNode.StateNode<ExplState,StmtAction>>()) {
+            .filterIsInstance<MenuGameNode.StateNode<ExplState,StmtAction>>()) {
             val abstractNodes = abstraction2.game.getAllNodes()
-                .filterIsInstance<MenuGameAbstractor.MenuGameNode.StateNode<ExplState,StmtAction>>()
+                .filterIsInstance<MenuGameNode.StateNode<ExplState,StmtAction>>()
                 .filter {
                     ExplOrd.getInstance().isLeq(refinedNode.s, it.s)
             }
@@ -262,16 +262,8 @@ class MenuGameAbstractionTest {
         }
 
         val threshold = 1e-6
-        val res = MenuGameCegarChecker(explAbstractor, refiner) { rewardFun ->
-            VISolver(
-                rewardFun,
-                TargetSetLowerInitializer {
-                    it is MenuGameAbstractor.MenuGameNode.StateNode && rewardFun(it) == 1.0
-                },
-                threshold/2, //TODO: is this okay?
-                false
-            )
-        }.check(ExplPrec.of(listOf(A)), Goal.MAX, threshold)
+        val res = MenuGameCegarChecker(explAbstractor, refiner, VISolver.supplier(threshold/2, false))
+            .check(ExplPrec.of(listOf(A)), Goal.MAX, threshold)
 
         println(res)
         assert(res.finalPrec == ExplPrec.of(listOf(A, B)))
@@ -287,7 +279,7 @@ class MenuGameAbstractionTest {
         val sg = abstraction.game
 
         val initialNode = sg.initialNode
-        assert(initialNode is MenuGameAbstractor.MenuGameNode.StateNode && initialNode.s == PredState.of(prec.negate(targetExpr)))
+        assert(initialNode is MenuGameNode.StateNode && initialNode.s == PredState.of(prec.negate(targetExpr)))
 
         checkAndViz(abstraction)
     }
@@ -317,16 +309,8 @@ class MenuGameAbstractionTest {
         }
 
         val threshold = 1e-6
-        val res = MenuGameCegarChecker(predAbstractor, refiner) { rewardFun ->
-            VISolver(
-                rewardFun,
-                TargetSetLowerInitializer {
-                    it is MenuGameAbstractor.MenuGameNode.StateNode && rewardFun(it) == 1.0
-                },
-                threshold/2, //TODO: is this okay?
-                false
-            )
-        }.check(PredPrec.of(listOf(targetExpr)), Goal.MAX, threshold)
+        val res = MenuGameCegarChecker(predAbstractor, refiner, VISolver.supplier(threshold/2, false))
+            .check(PredPrec.of(listOf(targetExpr)), Goal.MAX, threshold)
 
         println(res)
         assert(res.finalUpperInitValue-res.finalLowerInitValue <= threshold)

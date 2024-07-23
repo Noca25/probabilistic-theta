@@ -1,6 +1,7 @@
 package hu.bme.mit.theta.prob.analysis.jani
 
-import hu.bme.mit.theta.analysis.*
+import hu.bme.mit.theta.analysis.InitFunc
+import hu.bme.mit.theta.analysis.Prec
 import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.core.decl.Decl
@@ -9,11 +10,11 @@ import hu.bme.mit.theta.core.decl.VarDecl
 import hu.bme.mit.theta.core.model.Valuation
 import hu.bme.mit.theta.core.stmt.AssignStmt
 import hu.bme.mit.theta.core.stmt.Stmt
-import hu.bme.mit.theta.core.stmt.Stmts.*
+import hu.bme.mit.theta.core.stmt.Stmts.SequenceStmt
+import hu.bme.mit.theta.core.stmt.Stmts.SimultaneousStmt
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.Type
 import hu.bme.mit.theta.core.type.abstracttype.AbstractExprs
-import hu.bme.mit.theta.core.type.abstracttype.Castable
 import hu.bme.mit.theta.core.type.anytype.Exprs
 import hu.bme.mit.theta.core.type.anytype.RefExpr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
@@ -24,9 +25,10 @@ import hu.bme.mit.theta.core.type.inttype.IntType
 import hu.bme.mit.theta.core.type.rattype.RatExprs
 import hu.bme.mit.theta.core.type.rattype.RatLitExpr
 import hu.bme.mit.theta.core.type.rattype.RatType
+import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.ProbabilisticCommandLTS
 import hu.bme.mit.theta.prob.analysis.jani.SMDP.ActionLabel.InnerActionLabel
 import hu.bme.mit.theta.prob.analysis.jani.SMDP.ActionLabel.StandardActionLabel
-import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.Goal
 
@@ -216,7 +218,7 @@ class SMDPCommandAction(
 }
 
 
-class SmdpCommandLts<D: ExprState>(val smdp: SMDP) {
+class SmdpCommandLts<D: ExprState>(val smdp: SMDP): ProbabilisticCommandLTS<SMDPState<D>, SMDPCommandAction> {
     private val cache = hashMapOf<
             List<SMDP.Location>,
             List<ProbabilisticCommand<SMDPCommandAction>>
@@ -271,6 +273,10 @@ class SmdpCommandLts<D: ExprState>(val smdp: SMDP) {
 
     fun getCommandsFor(state: SMDPState<D>): List<ProbabilisticCommand<SMDPCommandAction>> {
         return cache.computeIfAbsent(state.locs) { computeCommands(state) }
+    }
+
+    override fun getAvailableCommands(state: SMDPState<D>): Collection<ProbabilisticCommand<SMDPCommandAction>> {
+        return getCommandsFor(state)
     }
 }
 

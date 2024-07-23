@@ -1,12 +1,14 @@
 package hu.bme.mit.theta.prob.analysis.menuabstraction
 
 import hu.bme.mit.theta.analysis.expl.ExplState
+import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.pred.PredState
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.*
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.core.utils.PathUtils
+import hu.bme.mit.theta.prob.analysis.jani.SMDPState
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.utils.WithPushPop
 
@@ -58,3 +60,11 @@ fun predMustSatisfy(solver: Solver) = fun (s: PredState, expr: Expr<BoolType>): 
     return predMustSatisfy(s, expr, solver)
 }
 
+fun <S: ExprState> smdpCanBeDisabled(domainCanBeDisabled: (s: S, guard: Expr<BoolType>)-> Boolean) =
+    fun (s: SMDPState<S>, guard: Expr<BoolType>): Boolean = domainCanBeDisabled(s.domainState, guard)
+
+fun <S: ExprState> smdpMaySatisfy(domainMaySatisfy: (s: S, expr: Expr<BoolType>)-> Boolean) =
+    fun (s: SMDPState<S>, expr: Expr<BoolType>): Boolean = domainMaySatisfy(s.domainState, expr)
+
+fun <S: ExprState> smdpMustSatisfy(domainMustSatisfy: (s: S, expr: Expr<BoolType>)-> Boolean) =
+    fun (s: SMDPState<S>, expr: Expr<BoolType>): Boolean = domainMustSatisfy(s.domainState, expr)

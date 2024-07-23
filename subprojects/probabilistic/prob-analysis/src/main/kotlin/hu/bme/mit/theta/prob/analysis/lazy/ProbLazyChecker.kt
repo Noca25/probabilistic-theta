@@ -37,8 +37,10 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private val goal: Goal,
 
     // Checker Configuration
-    private val useMay: Boolean = true,
-    private val useMust: Boolean = false,
+    private val useMayStandard: Boolean = true,
+    private val useMustStandard: Boolean = false,
+    private val useMayTarget: Boolean = true,
+    private val useMustTarget: Boolean = false,
     private val verboseLogging: Boolean = false,
     private val logger: Logger = ConsoleLogger(Logger.Level.VERBOSE),
     private val resetOnUncover: Boolean = true,
@@ -58,7 +60,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     }
 
     init {
-        if(!(useMay || useMust)) throw RuntimeException("No abstraction type (must/may/both) specified!")
+        if(!(useMayStandard || useMustStandard)) throw RuntimeException("No abstraction type (must/may/both) specified!")
     }
 
     val waitlist = ArrayDeque<Node>()
@@ -153,9 +155,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
             // TODO: better handling of the init node
             while (currNode.backEdges.isNotEmpty() && currNode.id != 0) {
-                //TODO: check that it works
-//                if(currNode.backEdges.size > 1)
-//                    throw UnsupportedOperationException("Sequence interpolation for multiple parents not implemented yet")
                 val backEdge = currNode.backEdges.first()
                 guards.add(0, backEdge.guard)
                 actions.add(0, backEdge.getActionFor(currNode))
@@ -276,10 +275,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             negatedCommands: List<ProbabilisticCommand<A>>,
             nonNegatedCommands: List<ProbabilisticCommand<A>>
         ) {
-//            negatedCommands.forEach{strengthenAgainstCommand(it, true)}
-//            nonNegatedCommands.forEach{strengthenAgainstCommand(it, false)}
-//            return
-
             val toblock =
                 SmartBoolExprs.Or(
                 negatedCommands.map { Not(it.guard) } + nonNegatedCommands.map { it.guard })
@@ -346,7 +341,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         goal: Goal,
         merged: Map<Node, Pair<Set<Node>, List<Edge>>>
     ): Node {
-        // TODO: force exiting end components
         // first we select the best action according to U if maxing/L if mining so that the policy is optimistic
         // O for optimistic
         val O = if (goal == Goal.MAX) U else L
@@ -368,7 +362,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     merged: Map<Node, Pair<Set<Node>, List<Edge>>>
     ): Node {
         val O = if (goal == Goal.MAX) U else L
-        val actionVals = currNode.getOutgoingEdges().associateWith {
+        val actionVals = merged[currNode]!!.second.associateWith {
             it.target.expectedValue { O.getValue(it.second) }
         }
         val bestValue = goal.select(actionVals.values)
@@ -402,9 +396,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         goal: Goal,
         merged: Map<Node, Pair<Set<Node>, List<Edge>>>
     ): Node {
-        // TODO: force exiting end components
         val O = if (goal == Goal.MAX) U else L
-        val actionVals = currNode.getOutgoingEdges().associateWith {
+        val actionVals = merged[currNode]!!.second.associateWith {
             it.target.expectedValue { O.getValue(it.second) }
         }
         val bestValue = goal.select(actionVals.values)
@@ -429,9 +422,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         goal: Goal,
         merged: Map<Node, Pair<Set<Node>, List<Edge>>>
     ): Node {
-        // TODO: force exiting end components
         val O = if (goal == Goal.MAX) U else L
-        val actionVals = currNode.getOutgoingEdges().associateWith {
+        val actionVals = merged[currNode]!!.second.associateWith {
             it.target.expectedValue { O.getValue(it.second) }
         }
         val bestValue = goal.select(actionVals.values)
@@ -528,7 +520,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         // virtually merged end components, also maintaining a set of edges that leave the EC for each of them
         val merged = hashMapOf(initNode to (setOf(initNode) to initNode.getOutgoingEdges()))
-        var newCovered = arrayListOf<Node>()
+        var checkForMEC = arrayListOf<Node>()
 
         fun onUncover(n: Node) {
             if(resetOnUncover) {
@@ -538,7 +530,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             for (node in merged[n]!!.first) {
                 merged[node] = setOf(node) to node.getOutgoingEdges()
                 if(node != n)
-                    newCovered.add(n)
+                    checkForMEC.add(n)
             }
         }
         var i = 0
@@ -562,7 +554,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
             // simulate a single trace
             val trace = arrayListOf(initNode)
-            newCovered.clear()
+            checkForMEC.clear()
 
             // TODO: probability-based bound for trace length (see learning algorithms paper)
             while (
@@ -595,7 +587,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                             scToNode[newNode.sc] = arrayListOf(newNode)
                         }
                         if (newNode.isCovered) {
-                            newCovered.add(newNode)
+                            checkForMEC.add(newNode)
                             U[newNode] = U.getOrDefault(newNode.coveringNode!!, 1.0)
                             L[newNode] = L.getOrDefault(newNode.coveringNode!!, 0.0)
                         } else if (newNode.isErrorNode) {
@@ -629,7 +621,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
                 trace.add(nextNode)
                 // this would lead to infinite traces in MECs, but the trace length bound will stop the loop
-                if (nextNode.isCovered)
+                while (nextNode.isCovered)
                     trace.add(nextNode.coveringNode!!)
             }
 
@@ -641,11 +633,11 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 //            newCovered.addAll(reachedSet.filter { it.isCovering })
 
             // for each new covered node added there is a chance that a new EC has been created
-            while (newCovered.isNotEmpty()) {
+            while (checkForMEC.isNotEmpty()) {
                 // the covered node then must be part of the EC, so it is enough to perform EC search on the subgraph
                 // reachable from this node
                 // this also means that at most one new EC can exist (which might be a superset of an existing one)
-                val node = newCovered.first()
+                val node = checkForMEC.first()
 
                 val mec = findMEC(node)
                 val edgesLeavingMEC = mec.flatMap {
@@ -658,7 +650,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                         if (zero) U[n] = 0.0
                     }
                 }
-                newCovered.removeAll(mec)
+                checkForMEC.removeAll(mec)
             }
 
             val Unew = HashMap(U)
@@ -715,8 +707,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         ) -> Node,
         threshold: Double = 1e-7
     ): Double {
-        require(useMay)
-        require(!useMust) {"Not implemented for lower-cover yet"}
+        require(useMayStandard)
+        require(!useMustStandard) {"Not implemented for lower-cover yet"}
 
         reset()
         val timer = Stopwatch.createStarted()
@@ -1155,12 +1147,12 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         for (cmd in errorCommands) {
             if (domain.isEnabled(n.sc, cmd)) {
                 n.markAsErrorNode()
-                if(useMust && !domain.mustBeEnabled(n.sa, cmd)) {
+                if(useMustTarget && !domain.mustBeEnabled(n.sa, cmd)) {
                     n.strengthenAgainstCommand(cmd, true)
                 }
 
                 return children // keep error nodes absorbing
-            } else if (useMay && domain.mayBeEnabled(n.sa, cmd)) {
+            } else if (useMayTarget && domain.mayBeEnabled(n.sa, cmd)) {
                 //n.strengthenAgainstCommand(cmd, false)
                 nonNegatedCommands.add(cmd)
             }
@@ -1175,19 +1167,19 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                     children.add(newNode)
                     a to newNode
                 }
-                if(useMust && !domain.mustBeEnabled(n.sa, cmd)) {
+                if(useMustStandard && !domain.mustBeEnabled(n.sa, cmd)) {
                     //n.strengthenAgainstCommand(cmd, true)
                     negatedCommands.add(cmd)
                 }
 
                 val surelyEnabled =
                     !useGameRefinement || ( // don't care about it if we don't use game refinement
-                        (useMay && useMust) || // if an Exact-PARG is built, then the standard refinement takes care of it
-                        (useMay && domain.mustBeEnabled(n.sa, cmd))
-                        || (useMust && TODO("is this right?") && domain.mayBeEnabled(n.sa, cmd)))
+                        (useMayStandard && useMustStandard) || // if an Exact-PARG is built, then the standard refinement takes care of it
+                        (useMayStandard && domain.mustBeEnabled(n.sa, cmd))
+                        || (useMustStandard && TODO("is this right?") && domain.mayBeEnabled(n.sa, cmd)))
 
                 n.createEdge(target, cmd.guard, surelyEnabled, cmd)
-            } else if (useMay && domain.mayBeEnabled(n.sa, cmd)) {
+            } else if (useMayStandard && domain.mayBeEnabled(n.sa, cmd)) {
                 //n.strengthenAgainstCommand(cmd, false)
                 nonNegatedCommands.add(cmd)
             }
@@ -1261,38 +1253,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         override fun getPlayer(node: Node): Int = 0 // This is an MDP
     }
-
-    private fun _computeErrorProb_DEBUG(
-        initNode: Node,
-        reachedSet: Collection<Node>,
-        useBVI: Boolean,
-        threshold: Double
-    ): Map<Node, Double> {
-
-        val parg = PARG(initNode, reachedSet)
-        val rewardFunction = TargetRewardFunction<Node, PARGAction> { it.isErrorNode && !it.isCovered }
-        val timer = Stopwatch.createStarted()
-        val initializer =
-            if(false)
-                MDPAlmostSureTargetInitializer(parg, goal) { it.isErrorNode && !it.isCovered }
-            else TargetSetLowerInitializer { it.isErrorNode && !it.isCovered }
-        val quantSolver =
-            if(useBVI) MDPBVISolver(rewardFunction, initializer, threshold)
-            else VISolver(rewardFunction, initializer, threshold, useGS = false)
-
-        val analysisTask = AnalysisTask(parg, { goal })
-        val nodes = parg.getAllNodes()
-        println("All nodes: ${nodes.size}")
-        println("Non-covered nodes: ${nodes.filter { !it.isCovered }.size}")
-
-        val values = quantSolver.solve(analysisTask)
-        timer.stop()
-        val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
-        println("Probability computation time (ms): $probTime")
-
-        return values
-    }
-
 
     private fun computeErrorProb(
         initNode: Node,

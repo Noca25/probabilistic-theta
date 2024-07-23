@@ -7,18 +7,48 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.double
 import com.github.ajalt.clikt.parameters.types.enum
+import hu.bme.mit.theta.analysis.InitFunc
+import hu.bme.mit.theta.analysis.Prec
+import hu.bme.mit.theta.analysis.expl.ExplInitFunc
+import hu.bme.mit.theta.analysis.expl.ExplPrec
+import hu.bme.mit.theta.analysis.expl.ExplState
+import hu.bme.mit.theta.analysis.expr.ExprState
+import hu.bme.mit.theta.analysis.expr.refinement.ExprTraceChecker
+import hu.bme.mit.theta.analysis.expr.refinement.Refutation
+import hu.bme.mit.theta.analysis.expr.refinement.RefutationToPrec
+import hu.bme.mit.theta.analysis.pred.PredAbstractors
+import hu.bme.mit.theta.analysis.pred.PredInitFunc
+import hu.bme.mit.theta.analysis.pred.PredPrec
+import hu.bme.mit.theta.analysis.pred.PredState
+import hu.bme.mit.theta.core.model.ImmutableValuation
+import hu.bme.mit.theta.core.type.Expr
+import hu.bme.mit.theta.core.type.booltype.BoolType
+import hu.bme.mit.theta.core.utils.ExprUtils
+import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
+import hu.bme.mit.theta.prob.analysis.besttransformer.*
+import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameAction
+import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectChecker
 import hu.bme.mit.theta.prob.analysis.direct.SMDPDirectCheckerGame
-import hu.bme.mit.theta.prob.analysis.jani.SMDPProperty
-import hu.bme.mit.theta.prob.analysis.jani.extractSMDPTask
+import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.jani.model.Model
 import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
-import hu.bme.mit.theta.prob.analysis.jani.toSMDP
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm
+import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
+import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.ExplLinkedTransFunc
+import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.LinkedTransFunc
+import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.PredLinkedTransFunc
+import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.SMDPLinkedTransFunc
+import hu.bme.mit.theta.prob.analysis.menuabstraction.*
 import hu.bme.mit.theta.prob.cli.JaniCLI.Domain.*
+import hu.bme.mit.theta.probabilistic.GameRewardFunction
 import hu.bme.mit.theta.probabilistic.Goal
+import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.*
+import hu.bme.mit.theta.solver.ItpSolver
+import hu.bme.mit.theta.solver.Solver
+import hu.bme.mit.theta.solver.UCSolver
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import kotlin.io.path.Path
 
@@ -27,8 +57,40 @@ class JaniCLI : CliktCommand() {
     enum class Domain {
         PRED, EXPL, NONE
     }
-    enum class Approximation(val useMay: Boolean, val useMust: Boolean) {
-        LOWER(false, true), UPPER(true, false), EXACT(true, true)
+    enum class Approximation(
+        val useMayStandard: Boolean,
+        val useMustStandard: Boolean,
+        val useMayTarget: (Goal)->Boolean,
+        val useMustTarget: (Goal)->Boolean
+    ) {
+        /**
+         * Lower approximation of the possible behaviors, leading to lower power of the non-determinism.
+         * Maximal values are approximated from below, minimal values from above.
+         */
+        LOWER(
+            false,
+            true,
+            { when(it) {Goal.MAX -> false; Goal.MIN -> true } },
+            { when(it) {Goal.MAX -> true; Goal.MIN -> false } }
+        ),
+        /**
+         * Upper approximation of the possible behaviors, leading to higher power of the non-determinism.
+         * Maximal values are approximated from above, minimal values from below.
+         */
+        UPPER(
+            true,
+            false,
+            { when(it) {Goal.MAX -> true; Goal.MIN -> false } },
+            { when(it) {Goal.MAX -> false; Goal.MIN -> true } }
+            ),
+
+        /**
+         * Computes exact values for both minimal and maximal values.
+         */
+        EXACT(true, true, {true}, {true})
+    }
+    enum class AbstractionMethod() {
+        LAZY, MENU_LAZY, MENU, BT
     }
 
     val model: String by option("-m", "--model", "-i", "--input",
@@ -43,6 +105,9 @@ class JaniCLI : CliktCommand() {
     val algorithm by option(
         help = "MDP solver algorithm to use."
     ).enum<Algorithm>().default(Algorithm.BVI)
+    val abstraction by option(
+        help = "Abstraction method to use. Defaults to ASG-based lazy abstraction for backwards compatibility."
+    ).enum<AbstractionMethod>().default(AbstractionMethod.LAZY)
     val domain by option(
         help = "Abstract domain to use. NONE means direct model checking without abstraction."
     ).enum<Domain>().required()
@@ -54,7 +119,7 @@ class JaniCLI : CliktCommand() {
     )
     val strategy by option(
         help = "Successor computation strategy for BRTDP."
-    ).enum<SMDPLazyChecker.BRTDPStrategy>().default(SMDPLazyChecker.BRTDPStrategy.DIFF_BASED)
+    ).enum<SMDPLazyChecker.BRTDPStrategy>().default(DIFF_BASED)
     val verbose by option().flag()
     val preproc by option("--preproc",
         help = "Use qualitative preprocessing, i.e. precompute almost sure reachability and avoidance."
@@ -62,9 +127,6 @@ class JaniCLI : CliktCommand() {
     val sequenceInterpolation by option("--seq",
         help = "Use sequence interpolation for refinement in lazy abstraction."
     ).flag("--noseq", default = true)
-    val gameRefinement by option("--game",
-        help = "Turns game-based abstraction-refinement on if lazy abstraction is used."
-    ).flag("--nogame", default = false)
 
     override fun run() {
 
@@ -82,6 +144,7 @@ class JaniCLI : CliktCommand() {
                 .toSMDP(parameters)
         val solver = Z3SolverFactory.getInstance().createSolver()
         val itpSolver = Z3SolverFactory.getInstance().createItpSolver()
+        val ucSolver = Z3SolverFactory.getInstance().createUCSolver()
 
         for (prop in model.properties) {
             if(this.property != null && this.property != prop.name)
@@ -100,51 +163,218 @@ class JaniCLI : CliktCommand() {
                 if (task.goal == Goal.MIN && (domain != NONE && approximation != Approximation.EXACT))
                     throw RuntimeException("Error: Approximate computation for MIN property ${prop.name} unsupported")
 
-                val preproc = if(algorithm == Algorithm.BRTDP) false else preproc
-
-                val lazyChecker = SMDPLazyChecker(
-                    solver,
-                    itpSolver,
-                    algorithm,
-                    verbose,
-                    strategy,
-                    approximation.useMay,
-                    approximation.useMust,
-                    threshold,
-                    sequenceInterpolation,
-                    gameRefinement,
-                    preproc
-                )
-                val directChecker = SMDPDirectChecker(solver, verbose, preproc)
-                val successorSelection = when(strategy) {
-                    SMDPLazyChecker.BRTDPStrategy.DIFF_BASED -> SMDPDirectCheckerGame::diffBasedSelection
-                    SMDPLazyChecker.BRTDPStrategy.RANDOM -> SMDPDirectCheckerGame::randomSelection
-                    SMDPLazyChecker.BRTDPStrategy.ROUND_ROBIN -> TODO()
-                    SMDPLazyChecker.BRTDPStrategy.WEIGHTED_RANDOM -> SMDPDirectCheckerGame::weightedRandomSelection
+                val result = when(abstraction) {
+                    AbstractionMethod.LAZY, AbstractionMethod.MENU_LAZY -> lazy(solver, itpSolver, ucSolver, task, model)
+                    AbstractionMethod.MENU -> menu(solver, itpSolver, ucSolver, task, model)
+                    AbstractionMethod.BT -> TODO()
                 }
-                val quantSolverSupplier = when(algorithm) {
-                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
-                    Algorithm.VI -> VISolver.supplier(threshold)
-                    Algorithm.BRTDP -> MDPBRTDPSolver.supplier(threshold, successorSelection) {
-                      iteration, reachedSet, linit, uinit ->
-                        if (verbose) {
-                            println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
-                        }
-                    }
-                }
-                val result = when(domain) {
-                    PRED -> lazyChecker.checkPred(
-                        model, task, )
-                    EXPL -> lazyChecker.checkExpl(model, task)
-                    NONE -> directChecker.check(model, task, quantSolverSupplier)
-                }
-                println("${prop.name}: $result")
+                println("result: ${prop.name}: $result")
             } else {
                 if(this.property != null)
                     throw RuntimeException("Error: Non-probability property ${prop.name} unsupported")
                 println("Non-probability property found")
             }
         }
+    }
+
+    private fun menu(
+        solver: Solver,
+        itpSolver: ItpSolver,
+        ucSolver: UCSolver,
+        task: SMDPReachabilityTask,
+        model: SMDP,
+    ) : Double {
+        return when(domain) {
+            PRED -> return menuHelper<PredState, PredPrec>(
+                solver,
+                itpSolver,
+                ucSolver,
+                task,
+                model,
+                PredInitFunc.create(
+                    PredAbstractors.booleanSplitAbstractor(solver),
+                    model.getFullInitExpr()
+                ),
+                PredLinkedTransFunc(solver),
+                smdpCanBeDisabled(predCanBeDisabled(solver)),
+                smdpMaySatisfy(predMaySatisfy(solver)),
+                smdpMustSatisfy(predMustSatisfy(solver)),
+                PredPrec.of(task.targetExpr),
+                {this.join(PredPrec.of(it))},
+                when(algorithm) {
+                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
+                    Algorithm.VI -> VISolver.supplier(threshold)
+                    Algorithm.BRTDP -> TODO()
+                }
+            )
+            EXPL -> menuHelper<ExplState, ExplPrec>(
+                solver,
+                itpSolver,
+                ucSolver,
+                task,
+                model,
+                ExplInitFunc.create(
+                    solver,
+                    model.getFullInitExpr()
+                ),
+                ExplLinkedTransFunc(0, solver),
+                smdpCanBeDisabled(::explCanBeDisabled),
+                smdpMaySatisfy(::explMaySatisfy),
+                smdpMustSatisfy(::explMustSatisfy),
+                ExplPrec.of(ExprUtils.getVars(task.targetExpr)),
+                {this.join(ExplPrec.of(ExprUtils.getVars(it)))},
+                when(algorithm) {
+                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
+                    Algorithm.VI -> VISolver.supplier(threshold)
+                    Algorithm.BRTDP -> TODO()
+                }
+            )
+            NONE -> throw IllegalArgumentException("Domain must be selected for menu game abstraction")
+        }
+    }
+
+    private fun <D: ExprState, P: Prec> menuHelper(
+        solver: Solver,
+        itpSolver: ItpSolver,
+        ucSolver: UCSolver,
+        task: SMDPReachabilityTask,
+        model: SMDP,
+        domainInitFunc: InitFunc<D, P>,
+        domainTransFunc: LinkedTransFunc<D, SMDPCommandAction, P>,
+        canBeDisabled: (SMDPState<D>, Expr<BoolType>) -> Boolean,
+        maySatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
+        mustSatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
+        initPrec: P,
+        extend: P.(basedOn: Expr<BoolType>) -> P,
+        quantSolverSupplier: (
+            GameRewardFunction<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>,
+                SGSolutionInitializer<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>
+                ) -> StochasticGameSolver<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>
+    ): Double {
+        val lts = SmdpCommandLts<D>(model)
+        val initFunc = SmdpInitFunc<D, P>(domainInitFunc, model)
+        val transFunc = BasicMenuGameTransFunc(SMDPLinkedTransFunc(domainTransFunc), canBeDisabled)
+        val abstractor = MenuGameAbstractor(
+            lts,
+            initFunc,
+            transFunc,
+            task.targetExpr,
+            maySatisfy,
+            mustSatisfy
+        )
+
+        val refiner = MenuGameRefiner<SMDPState<D>, SMDPCommandAction, P>(solver, extend)
+
+        val checker = MenuGameCegarChecker(
+            abstractor,
+            refiner,
+            quantSolverSupplier
+        )
+        return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
+    }
+
+    private fun <D: ExprState, P: Prec, R: Refutation> bestTransformer(
+        solver: Solver,
+        itpSolver: ItpSolver,
+        ucSolver: UCSolver,
+        task: SMDPReachabilityTask,
+        model: SMDP,
+        domainInitFunc: InitFunc<D, P>,
+        domainTransFunc: LinkedTransFunc<D, SMDPCommandAction, P>,
+        getGuardSatisfactionConfigs: (SMDPState<D>, List<ProbabilisticCommand<SMDPCommandAction>>) -> List<List<ProbabilisticCommand<SMDPCommandAction>>>,
+        maySatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
+        mustSatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
+        initPrec: P,
+        extend: P.(basedOn: Expr<BoolType>) -> P,
+        quantSolverSupplier:
+            (GameRewardFunction<BestTransformerGameNode<SMDPState<D>, SMDPCommandAction>, BestTransformerGameAction<SMDPState<D>, SMDPCommandAction>>,
+             SGSolutionInitializer<BestTransformerGameNode<SMDPState<D>, SMDPCommandAction>, BestTransformerGameAction<SMDPState<D>, SMDPCommandAction>>
+                    ) -> StochasticGameSolver<BestTransformerGameNode<SMDPState<D>, SMDPCommandAction>, BestTransformerGameAction<SMDPState<D>, SMDPCommandAction>>,
+        pivotSelectionStrategy: PivotSelectionStrategy,
+        eliminateSpurious: Boolean,
+        traceChecker: ExprTraceChecker<R>,
+        refToPrec: RefutationToPrec<P, R>?
+    ): BestTransformerCegarChecker.BestTransformerCheckerResult<SMDPState<D>, SMDPCommandAction, P> {
+        val lts = SmdpCommandLts<D>(model)
+        val initFunc = SmdpInitFunc<D, P>(domainInitFunc, model)
+        val transFunc = BasicBestTransformerTransFunc(SMDPLinkedTransFunc(domainTransFunc), getGuardSatisfactionConfigs)
+        val abstractor = BestTransformerAbstractor(
+            lts,
+            initFunc,
+            transFunc,
+            task.targetExpr,
+            maySatisfy,
+            mustSatisfy
+        )
+
+        val refiner = BestTransformerRefiner<SMDPState<D>, SMDPCommandAction, P, R>(
+            solver, extend, pivotSelectionStrategy, eliminateSpurious, traceChecker, refToPrec
+        )
+
+        val checker = BestTransformerCegarChecker(
+            abstractor,
+            refiner,
+            quantSolverSupplier
+        )
+        return checker.check(initPrec, task.goal, threshold)
+    }
+
+    private fun lazy(
+        solver: Solver,
+        itpSolver: ItpSolver,
+        ucSolver: UCSolver,
+        task: SMDPReachabilityTask,
+        model: SMDP
+    ): Double {
+        val preproc = if (algorithm == Algorithm.BRTDP) false else preproc
+
+        val lazyChecker = SMDPLazyChecker(
+            solver,
+            itpSolver,
+            ucSolver,
+            algorithm,
+            verbose,
+            strategy,
+            approximation.useMayStandard,
+            approximation.useMustStandard,
+            approximation.useMayTarget(task.goal),
+            approximation.useMustTarget(task.goal),
+            threshold,
+            sequenceInterpolation,
+            this.abstraction == AbstractionMethod.MENU_LAZY,
+            preproc
+        )
+
+        if (model.getAllVars().size < 30) {
+            ImmutableValuation.experimental = true
+            ImmutableValuation.declOrder = model.getAllVars().toTypedArray()
+        }
+
+        val directChecker = SMDPDirectChecker(solver, verbose, preproc)
+        val successorSelection = when (strategy) {
+            DIFF_BASED -> SMDPDirectCheckerGame::diffBasedSelection
+            RANDOM -> SMDPDirectCheckerGame::randomSelection
+            ROUND_ROBIN -> TODO()
+            WEIGHTED_RANDOM -> SMDPDirectCheckerGame::weightedRandomSelection
+        }
+        val quantSolverSupplier = when (algorithm) {
+            Algorithm.BVI -> MDPBVISolver.supplier(threshold)
+            Algorithm.VI -> VISolver.supplier(threshold)
+            Algorithm.BRTDP -> MDPBRTDPSolver.supplier(
+                threshold,
+                successorSelection
+            ) { iteration, reachedSet, linit, uinit ->
+                if (verbose) {
+                    println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
+                }
+            }
+        }
+        val result = when (domain) {
+            PRED -> lazyChecker.checkPred(model, task)
+            EXPL -> lazyChecker.checkExpl(model, task)
+            NONE -> directChecker.check(model, task, quantSolverSupplier)
+        }
+        return result
     }
 }
 

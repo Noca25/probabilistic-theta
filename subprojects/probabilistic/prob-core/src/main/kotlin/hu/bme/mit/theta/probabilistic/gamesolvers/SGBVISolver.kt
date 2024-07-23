@@ -7,7 +7,7 @@ import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 class SGBVISolver<N, A>(
     val threshold: Double,
     val lowerInitializer: SGSolutionInitializer<N, A>,
-    val upperInitilizer: SGSolutionInitializer<N, A>,
+    val upperInitializer: SGSolutionInitializer<N, A>,
     val useGS: Boolean = false,
     val msecOptimalityThreshold: Double = 1e-12,
 ): StochasticGameSolver<N, A> {
@@ -30,7 +30,7 @@ class SGBVISolver<N, A>(
         // (at least precompute a list of non-zero reward transitions and nodes -> check during deflation)
 
         val lInit = allNodes.associateWith(lowerInitializer::initialLowerBound)
-        val uInit = allNodes.associateWith(upperInitilizer::initialUpperBound)
+        val uInit = allNodes.associateWith(upperInitializer::initialUpperBound)
         val unknownNodes = game.getAllNodes().filter { uInit[it]!!-lInit[it]!! > threshold }
         var lCurr = lInit
         var uCurr = uInit
@@ -49,6 +49,9 @@ class SGBVISolver<N, A>(
     }
 
     override fun solveWithStrategy(analysisTask: AnalysisTask<N, A>): Pair<Map<N, Double>, Map<N, A>> {
-        TODO("Not yet implemented")
+        val rangeSolution = solveWithRange(analysisTask)
+        val u = rangeSolution.upper
+        val l = rangeSolution.lower
+        return l.keys.associateWith { (u[it]!!+l[it]!!)/2 } to rangeSolution.strategy!!
     }
 }

@@ -4,8 +4,13 @@ interface ExpandableNode<N: ExpandableNode<N>> {
     fun isExpanded(): Boolean
 
     /**
-     * Returns: (newlyExpanded, revisited)
+     * Returns: (newlyDiscovered, revisited)
      * Ensures: receiver.isExpanded
      */
-    fun expand(): Pair<List<N>, List<N>>
+    fun expand(): ExpansionResult<N>
 }
+
+data class ExpansionResult<N>(
+    val newlyDiscovered: List<N>,
+    val revisited: List<N>
+)

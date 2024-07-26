@@ -12,6 +12,7 @@ import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpandableNode
+import hu.bme.mit.theta.probabilistic.gamesolvers.ExpansionResult
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTargetInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
@@ -145,10 +146,10 @@ class DirectChecker<S: State, A: StmtAction>(
             }
 
             override fun expand(
-            ): Pair<List<DirectCheckerNode<S, A>>, List<DirectCheckerNode<S, A>>> {
+            ): ExpansionResult<NodeClass> {
                 val stdCommands = getStdCommands(this.state)
                 this.expanded = true
-                if (this.isTargetNode) return Pair(listOf(), listOf())
+                if (this.isTargetNode) return ExpansionResult(listOf(), listOf())
 
                 val currState = this.state
                 val newChildren = arrayListOf<DirectCheckerNode<S, A>>()
@@ -181,7 +182,7 @@ class DirectChecker<S: State, A: StmtAction>(
                     }
                 }
                 waitlist?.addAll(newChildren)
-                return Pair(newChildren, revisited)
+                return ExpansionResult(newChildren, revisited)
             }
 
             override fun equals(other: Any?): Boolean {

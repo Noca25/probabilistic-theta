@@ -14,6 +14,7 @@ import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
 import hu.bme.mit.theta.probabilistic.ImplicitStochasticGame
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpandableNode
+import hu.bme.mit.theta.probabilistic.gamesolvers.ExpansionResult
 
 class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
     val lts: ProbabilisticCommandLTS<S, A>,
@@ -56,7 +57,7 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
             expanded = false
         }
 
-        override fun expand(): Pair<List<BLASTMenuGameNode>, List<BLASTMenuGameNode>> {
+        override fun expand(): ExpansionResult<BLASTMenuGameNode> {
             val newlyCreated = hashSetOf<BLASTMenuGameNode>()
             val revisited = hashSetOf<BLASTMenuGameNode>()
             for (action in this@BLASTMenuGame.getAvailableActions(this)) {
@@ -68,7 +69,7 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
             }
             expanded = true
             // TODO: what if some node has been created for one of the actions and has been revisited by another?
-            return newlyCreated.toList() to revisited.toList()
+            return ExpansionResult(newlyCreated.toList(), revisited.toList())
         }
 
         fun coverWith(coverer: BLASTMenuGameNode) {
@@ -146,7 +147,7 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
 
     override fun getPlayer(node: MenuGameNode<S, A>): Int = node.player
 
-    inner class ExpansionResult(
+    inner class BLASTExpansionResult(
         val newEdge: BLASTMenuGameEdge,
         val newlyCreated: List<BLASTMenuGameNode>,
         val revisited: List<BLASTMenuGameNode>
@@ -155,7 +156,7 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
     fun expand(
         node: BLASTMenuGameNode,
         action: MenuGameAction<S, A>
-    ): ExpansionResult {
+    ): BLASTExpansionResult {
         if (action in node.outgoingEdges) throw IllegalStateException("Node-action pair already explored!")
         val result = when (node.wrappedNode) {
             is MenuGameNode.StateNode -> when (action) {
@@ -204,7 +205,7 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
             }
         }
         val newEdge = createEdge(action, node, result.transform { nodes[it]!!.getLastCoverer() })
-        return ExpansionResult(newEdge, newlyCreated, revisited)
+        return BLASTExpansionResult(newEdge, newlyCreated, revisited)
     }
 
     fun getAvailableActions(node: BLASTMenuGameNode): Collection<MenuGameAction<S, A>> {
@@ -252,7 +253,7 @@ class BLASTMenuGame<S : ExprState, A : StmtAction, P : Prec>(
             close(currNode)
             if (currNode.coveringNode == null) {
                 val expansionResult = currNode.expand()
-                waitlist.addAll(expansionResult.first)
+                waitlist.addAll(expansionResult.newlyDiscovered)
             }
         }
     }

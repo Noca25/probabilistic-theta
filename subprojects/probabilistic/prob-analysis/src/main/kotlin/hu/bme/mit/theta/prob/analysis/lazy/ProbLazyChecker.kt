@@ -13,9 +13,7 @@ import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
-import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBVISolver
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
-import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.FallbackInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTargetInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
@@ -68,10 +66,12 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private var nextNodeId = 0
 
     var currReachedSet: TrieReachedSet<Node, *>? = null
+    val globalScToNode: HashMap<SC, List<Node>>? =
+        if(mergeSameSCNodes) hashMapOf() else null
 
     inner class Node(
         val sc: SC, sa: SA
-    ) {
+    ): ExpandableNode<Node> {
         var sa: SA = sa
             private set(v) {
                 val tracked = currReachedSet?.delete(this) ?: false
@@ -86,6 +86,18 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         var isExpanded = false
 
         fun isComplete() = isExpanded || isCovered || isErrorNode
+        override fun isExpanded(): Boolean {
+            return isExpanded
+        }
+
+        override fun expand(): ExpansionResult<Node> {
+            return this@ProbLazyChecker.expand(
+                this,
+                getStdCommands(this.sc),
+                getErrorCommands(this.sc),
+                if(mergeSameSCNodes) globalScToNode else null
+            )
+        }
 
         override fun hashCode(): Int {
             // as SA and the outgoing edges change throughout building the ARG,
@@ -563,17 +575,21 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             ) {
                 val lastNode = trace.last()
                 if (!lastNode.isExpanded) {
-                    val newNodes = expand(
+                    val (newlyDiscovered, revisited) = expand(
                         lastNode,
                         getStdCommands(lastNode.sc),
-                        getErrorCommands(lastNode.sc)
+                        getErrorCommands(lastNode.sc),
+                        if(mergeSameSCNodes) scToNode else null
                     )
+                    if(mergeSameSCNodes) {
+                        checkForMEC.addAll(revisited)
+                    }
                     // as the node has just been expanded, its outgoing edges have been changed,
                     // so the merged map needs to be updated as well
                     if (merged[lastNode]!!.first.size == 1)
                         merged[lastNode] = setOf(lastNode) to lastNode.getOutgoingEdges()
 
-                    for (newNode in newNodes) {
+                    for (newNode in newlyDiscovered) {
                         newNode.onUncover = ::onUncover
 
                         // treating each node as its own EC at first so that value computations can be done
@@ -600,7 +616,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                         }
                     }
 
-                    if (newNodes.isEmpty()) {
+                    if (newlyDiscovered.isEmpty()) {
                         // marking as error node is done during expanding the node,
                         // so the node might have become an error node since starting the core
                         if (lastNode.isErrorNode)
@@ -641,8 +657,11 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
                 val mec = findMEC(node)
                 val edgesLeavingMEC = mec.flatMap {
-                    it.getOutgoingEdges().filter { it.targetList.any { it.second !in mec } }
+                    it.getOutgoingEdges().filter {
+                        it.targetList.any { it.second !in mec }
+                    }
                 }
+                if(mergeSameSCNodes) TODO("handle self-loops (1-node MECS)")
                 if (mec.size > 1) {
                     val zero = goal == Goal.MIN || (edgesLeavingMEC.isEmpty() && mec.all { it.isExpanded || it.isCovered })
                     for (n in mec) {
@@ -782,11 +801,15 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                 val lastNode = trace.last()
                 if (!lastNode.isExpanded) {
                     require(!lastNode.isCovered)
-                    val newNodes = expand(
+                    val (newlyDiscovered, revisited) = expand(
                         lastNode,
                         getStdCommands(lastNode.sc),
-                        getErrorCommands(lastNode.sc)
+                        getErrorCommands(lastNode.sc),
+                        if(mergeSameSCNodes) scToNode else null
                     )
+                    if(mergeSameSCNodes) {
+                        checkForMEC.addAll(revisited)
+                    }
 
                     require(mergedFull[lastNode]!!.first.size == 1)
                     require(mergedTrapped[lastNode]!!.first.size == 1)
@@ -798,7 +821,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                         mergedTrapped[lastNode] = setOf(lastNode) to lastNode.getOutgoingEdges()
                             .filter { it.surelyEnabled }
 
-                    for (newNode in newNodes) {
+                    for (newNode in newlyDiscovered) {
                         newNode.onUncover = ::onUncover
 
                         // treating each node as its own EC at first so that value computations can be done
@@ -833,7 +856,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                         }
                     }
 
-                    if (newNodes.isEmpty()) {
+                    if (newlyDiscovered.isEmpty()) {
                         // marking as error node is done during expanding the node,
                         // so the node might have become an error node since starting the core
                         if (lastNode.isErrorNode) {
@@ -1101,21 +1124,20 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             require(!n.isCovered)
             close(n, reachedSet, scToNode)
             if (n.isCovered) continue
-            val newNodes = expand(
+            val (newlyDiscovered, revisited) = expand(
                 n,
                 getStdCommands(n.sc),
                 getErrorCommands(n.sc),
-                //if (useSeq || !mergeSameSCNodes) hashMapOf() else scToNode
                 if (mergeSameSCNodes) scToNode else hashMapOf()
             )
-            for (newNode in newNodes) {
-                //TODO: change to less complex check
-                if (newNode.isCovered || newNode in waitlist)
-                    continue
-                if(newNode.isExpanded) {
-                    newNode.strengthenParents()
-                    continue
+            for (node in revisited) {
+                if(node.isExpanded) {
+                    node.strengthenParents()
                 }
+            }
+            for (newNode in newlyDiscovered) {
+                if (newNode.isCovered)
+                    continue
                 close(newNode, reachedSet, scToNode)
                 if (newNode.sc in scToNode) {
                     scToNode[newNode.sc]!!.add(newNode)
@@ -1138,9 +1160,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         stdCommands: Collection<ProbabilisticCommand<A>>,
         errorCommands: Collection<ProbabilisticCommand<A>>,
         scToNode: Map<SC, List<Node>>? = null
-    ): Collection<Node> {
-
-        val children = arrayListOf<Node>()
+    ): ExpansionResult<Node> {
 
         val negatedCommands = arrayListOf<ProbabilisticCommand<A>>()
         val nonNegatedCommands = arrayListOf<ProbabilisticCommand<A>>()
@@ -1151,24 +1171,31 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                     n.strengthenAgainstCommand(cmd, true)
                 }
 
-                return children // keep error nodes absorbing
+                return ExpansionResult(emptyList(), emptyList()) // keep error nodes absorbing
             } else if (useMayTarget && domain.mayBeEnabled(n.sa, cmd)) {
-                //n.strengthenAgainstCommand(cmd, false)
                 nonNegatedCommands.add(cmd)
             }
         }
+        val newlyDiscovered = arrayListOf<Node>()
+        val revisited = hashSetOf<Node>()
         for (cmd in stdCommands) {
             if (domain.isEnabled(n.sc, cmd)) {
                 val target = cmd.result.transform { a ->
                     val nextState = domain.concreteTransFunc(n.sc, a)
-                    val newNode =
-                        scToNode?.get(nextState)?.firstOrNull()
-                            ?: Node(nextState, domain.topAfter(n.sa, a))
-                    children.add(newNode)
-                    a to newNode
+                    if(scToNode != null
+                        && nextState in scToNode
+                        && scToNode[nextState]!!.isNotEmpty()) {
+                        val revisNode = scToNode[nextState]!!.first()
+                        revisited.add(revisNode)
+                        a to revisNode
+                    } else {
+                        val newNode = Node(nextState, domain.topAfter(n.sa, a))
+                        newlyDiscovered.add(newNode)
+                        // TODO: move scToNode updates here
+                        a to newNode
+                    }
                 }
                 if(useMustStandard && !domain.mustBeEnabled(n.sa, cmd)) {
-                    //n.strengthenAgainstCommand(cmd, true)
                     negatedCommands.add(cmd)
                 }
 
@@ -1180,7 +1207,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
                 n.createEdge(target, cmd.guard, surelyEnabled, cmd)
             } else if (useMayStandard && domain.mayBeEnabled(n.sa, cmd)) {
-                //n.strengthenAgainstCommand(cmd, false)
                 nonNegatedCommands.add(cmd)
             }
         }
@@ -1189,7 +1215,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
         n.isExpanded = true
 
-        return children
+        return ExpansionResult(newlyDiscovered, revisited.toList())
     }
 
     private fun close(node: Node, reachedSet: Collection<Node>, scToNode: Map<SC, List<Node>>) {
@@ -1450,12 +1476,17 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         }
         while (!waitlist.isEmpty()) {
             val n = waitlist.removeFirst()
-            val newNodes = expand(
+            val (newlyDiscovered, revisited) = expand(
                 n,
                 getStdCommands(n.sc),
                 getErrorCommands(n.sc),
             )
-            for (newNode in newNodes) {
+            for (node in revisited) {
+                if(node.isExpanded) {
+                    node.strengthenParents()
+                }
+            }
+            for (newNode in newlyDiscovered) {
                 close(newNode, reachedSet, scToNode)
                 if(newNode.sc in scToNode) {
                     scToNode[newNode.sc]!!.add(newNode)

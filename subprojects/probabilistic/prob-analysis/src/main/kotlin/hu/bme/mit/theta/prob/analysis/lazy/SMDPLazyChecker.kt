@@ -7,13 +7,24 @@ import hu.bme.mit.theta.analysis.expl.ExplStmtTransFunc
 import hu.bme.mit.theta.analysis.pred.PredAbstractors
 import hu.bme.mit.theta.analysis.pred.PredInitFunc
 import hu.bme.mit.theta.analysis.pred.PredPrec
+import hu.bme.mit.theta.analysis.pred.PredState
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
+import hu.bme.mit.theta.probabilistic.StochasticGame
+import hu.bme.mit.theta.probabilistic.gamesolvers.diffBasedSelection
+import hu.bme.mit.theta.probabilistic.gamesolvers.randomSelection
+import hu.bme.mit.theta.probabilistic.gamesolvers.roundRobinSelection
+import hu.bme.mit.theta.probabilistic.gamesolvers.weightedRandomSelection
 import hu.bme.mit.theta.solver.ItpSolver
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.UCSolver
+
+typealias SMDPLazyCheckerGame<S> = StochasticGame<
+        ProbLazyChecker<SMDPState<ExplState>, SMDPState<S>, SMDPCommandAction>.Node,
+        ProbLazyChecker<SMDPState<ExplState>, SMDPState<S>, SMDPCommandAction>.Edge
+        >
 
 class SMDPLazyChecker(
     val smtSolver: Solver,
@@ -34,8 +45,10 @@ class SMDPLazyChecker(
 ) {
 
     enum class BRTDPStrategy {
-        DIFF_BASED, RANDOM, ROUND_ROBIN, WEIGHTED_RANDOM,
-
+        DIFF_BASED,
+        RANDOM,
+        ROUND_ROBIN,
+        WEIGHTED_RANDOM;
     }
 
     enum class Algorithm {
@@ -91,10 +104,10 @@ class SMDPLazyChecker(
             mergeSameSCNodes = mergeSameSCNodes
         )
         val successorSelection = when (brtdpStrategy) {
-            BRTDPStrategy.RANDOM -> checker::randomSelection
-            BRTDPStrategy.WEIGHTED_RANDOM -> checker::weightedRandomSelection
-            BRTDPStrategy.ROUND_ROBIN -> checker::roundRobinSelection
-            BRTDPStrategy.DIFF_BASED -> checker::diffBasedSelection
+            BRTDPStrategy.RANDOM -> SMDPLazyCheckerGame<ExplState>::randomSelection
+            BRTDPStrategy.WEIGHTED_RANDOM -> SMDPLazyCheckerGame<ExplState>::weightedRandomSelection
+            BRTDPStrategy.ROUND_ROBIN -> roundRobinSelection { this.chooseNextRR().second }
+            BRTDPStrategy.DIFF_BASED -> SMDPLazyCheckerGame<ExplState>::diffBasedSelection
         }
 
         val varOrder = smdp.getAllVars()
@@ -168,11 +181,12 @@ class SMDPLazyChecker(
         )
 
         val successorSelection = when (brtdpStrategy) {
-            BRTDPStrategy.RANDOM -> checker::randomSelection
-            BRTDPStrategy.WEIGHTED_RANDOM -> checker::weightedRandomSelection
-            BRTDPStrategy.ROUND_ROBIN -> checker::roundRobinSelection
-            BRTDPStrategy.DIFF_BASED -> checker::diffBasedSelection
+            BRTDPStrategy.RANDOM -> SMDPLazyCheckerGame<PredState>::randomSelection
+            BRTDPStrategy.WEIGHTED_RANDOM -> SMDPLazyCheckerGame<PredState>::weightedRandomSelection
+            BRTDPStrategy.ROUND_ROBIN -> roundRobinSelection { this.chooseNextRR().second }
+            BRTDPStrategy.DIFF_BASED -> SMDPLazyCheckerGame<PredState>::diffBasedSelection
         }
+
 
         val subResult = when (algorithm) {
             BRTDP -> checker.brtdp(successorSelection, threshold)

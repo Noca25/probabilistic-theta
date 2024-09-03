@@ -4,13 +4,41 @@ import java.util.*
 
 interface StochasticGame<N, A> {
     val initialNode: N
+
+    /**
+     * Returns a collection of actions that can be taken in the given node.
+     */
     fun getAvailableActions(node: N): Collection<A>
+
+    /**
+     * Returns the distribution of nodes resulting from taking the given
+     * action in the given node.
+     */
     fun getResult(node: N, action: A): FiniteDistribution<N>
+
+    /**
+     * Identifier of the player controlling the given node.
+     */
     fun getPlayer(node: N): Int
 
+    /**
+     * Get a collection of all nodes in the game.
+     * Should be called only on games which are known to be finite.
+     */
     fun getAllNodes(): Collection<N>
 
-    fun materialize(): Pair<ExplicitStochasticGame, Map<N, ExplicitStochasticGame.Node>> {
+    data class MaterializationResult<N>(
+        val materializedGame: ExplicitStochasticGame,
+        val originalToMaterializedNodeMapping: Map<N, ExplicitStochasticGame.Node>
+    )
+
+    /**
+     * "Materializes" the game as an ExplicitStochasticGame, an explicit graph-based
+     * representation of the game where graph "edges" and nodes can be directly accessed,
+     * including querying precomputed predecessors of a node.
+     * Should be called only on games which are known to be finite.
+     */
+    fun materialize(): MaterializationResult<N> {
         val nodeMapping = hashMapOf<N, ExplicitStochasticGame.Builder.Node>()
 
         val (resultGame, builderMapping) = ExplicitStochasticGame.Builder().apply {
@@ -39,7 +67,10 @@ interface StochasticGame<N, A> {
             }
             setInitNode(nodeMapping[this@StochasticGame.initialNode]!!)
         }.build()
-        return resultGame to nodeMapping.mapValues { builderMapping[it.value]!! }
+        return MaterializationResult(
+            resultGame,
+            nodeMapping.mapValues { builderMapping[it.value]!! }
+        )
     }
 }
 

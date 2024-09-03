@@ -8,10 +8,22 @@ import java.util.*
 import java.util.ArrayDeque
 import kotlin.collections.*
 import kotlin.math.abs
+import kotlin.math.max
 
 data class StepResult<N, A>(
+    /**
+     * The new node values resulting from applying this step.
+     */
     val result: Map<N, Double>,
+    /**
+     * The largest change among all node values resulting from the application of this step.
+     */
     val maxChange: Double,
+    /**
+     * Maps nodes to their optimal action according to this step.
+     * Partial strategy defined only for those nodes that changed value
+     * in this step.
+     */
     val strategyUpdate: Map<N, A>?
 )
 
@@ -69,10 +81,11 @@ fun <N, A> bellmanStep(
     for (node in unknownNodes) {
         val values = actionValues(game, v, node, rewardFunction)
         val chosenAction = goal(game.getPlayer(node)).argSelect(values)
-        if (chosenAction != null) strategyUpdate[node] = chosenAction
         val newValue =
             rewardFunction.getStateReward(node) +
             discountFactor * (values.getOrDefault(chosenAction, 0.0))
+        val oldValue = res[node] ?: 0.0
+        if (chosenAction != null && oldValue != newValue) strategyUpdate[node] = chosenAction
         res[node] = newValue
         val change = abs(newValue - currValues[node]!!)
         if (change > maxChange) maxChange = change
@@ -126,7 +139,7 @@ fun <N, A> deflate(
             game.getAvailableActions(n).filter { vals[it]!!.equals(optim, msecOptimalityThreshold) }
         }
     }
-    val msecs = computeMECs(game) { optimalActions.get(it)!! }
+    val msecs = computeMECs(game) { optimalActions[it]!! }
     val res = upperValues.toMutableMap()
     for (msec in msecs) {
         val bestExit = (msec.filter { goal(game.getPlayer(it)) == Goal.MAX }.flatMap { n ->
@@ -155,7 +168,7 @@ fun <N, A> deflate(
     goal: (Int) -> Goal,
     rewardFunction: GameRewardFunction<N, A>,
     msecOptimalityThreshold: Double = 1e-18
-): Map<N, Double> {
+): StepResult<N, A> {
     val optimalActions = game.getAllNodes().associateWith { n ->
         if (goal(game.getPlayer(n)) == Goal.MAX) game.getAvailableActions(n)
         else {
@@ -167,18 +180,34 @@ fun <N, A> deflate(
     }
     val msecs = computeMECs(game) { optimalActions.get(it)!! }
     val res = upperValues.toMutableMap()
+    val strategyUpdate = hashMapOf<N, A>()
+    var maxChange = 0.0
     for (msec in msecs) {
-        val bestExit = (msec.filter { goal(game.getPlayer(it)) == Goal.MAX }.flatMap { n ->
-            game.getAvailableActions(n).map { act -> game.getResult(n, act) }.filter { it.support.any { it !in msec } }
-                .map { it.expectedValue { upperValues[it]!! } }
-        } + msec.mapNotNull { lowerValues[it] } // Used so that we do not deflate lower than the currently known lower approximation
+        val exitValues = msec.filter { goal(game.getPlayer(it)) == Goal.MAX }.associateWith { n ->
+            game.getAvailableActions(n).map { act -> act to game.getResult(n, act) }
+                .filter { it.second.support.any { it !in msec } }
+                .map {
+                    it.first to it.second.expectedValue { nextNode ->
+                        upperValues[nextNode]!! + rewardFunction(n, it.first, nextNode)
+                    }
+                }.maxByOrNull { it.second } ?: (null to 0.0)
+        }
+        val bestExit = (exitValues.map { it.value.second } +
+                msec.mapNotNull { lowerValues[it] } // Used so that we do not deflate lower than the currently known lower approximation
                 ).maxOrNull() ?: 0.0
         for (node in msec) {
-            TODO("rewards")
-            if (res[node]!! > bestExit) res[node] = bestExit
+            val exitingNode = (exitValues.containsKey(node)
+                    && exitValues[node]!!.second == bestExit
+                    && exitValues[node]!!.first != null)
+            if(exitingNode) strategyUpdate[node] = exitValues[node]!!.first!!
+            // TODO: does this even make sense if we have a non-zero state reward in a MEC?
+            if (res[node]!! > rewardFunction(node)+bestExit) {
+                maxChange = max(maxChange, rewardFunction(node)+bestExit-res[node]!!)
+                res[node] = rewardFunction(node)+bestExit
+            }
         }
     }
-    return res
+    return StepResult(res, maxChange, strategyUpdate)
 }
 
 /**
@@ -288,10 +317,6 @@ fun computeSCCs(
         dfsstack.push(i)
         while (!dfsstack.empty()) {
             val u = dfsstack.peek()
-//            if(visited[u]) {
-//                dfsstack.pop()
-//                continue
-//            }
             visited[u] = true
             var completed = true
             for (v in E[u]) {

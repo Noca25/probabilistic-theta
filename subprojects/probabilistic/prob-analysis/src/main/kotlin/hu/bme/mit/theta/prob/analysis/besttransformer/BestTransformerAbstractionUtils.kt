@@ -53,7 +53,7 @@ fun <A : StmtAction> explGetGuardSatisfactionConfigs(solver: Solver) =
                 for (guard in simplifiedGuards) {
                     if(guard == True() || guard == False())
                         continue
-                    if(actLits.size < i) {
+                    if(actLits.size <= i) {
                         actLits.add(Decls.Const("__guardconfigs_actlit_$i", Bool()))
                     }
                     solver.add(Iff(actLits[i].ref, PathUtils.unfold(guard, 0)))
@@ -92,7 +92,7 @@ fun <A : StmtAction> predGetGuardSatisfactionConfigs(solver: Solver) =
             var i = 0
             for (command in commands) {
                 val guard = command.guard
-                if(actLits.size < i) {
+                if(actLits.size <= i) {
                     actLits.add(Decls.Const("__guardconfigs_actlit_$i", Bool()))
                 }
                 solver.add(Iff(actLits[i].ref, PathUtils.unfold(guard, 0)))

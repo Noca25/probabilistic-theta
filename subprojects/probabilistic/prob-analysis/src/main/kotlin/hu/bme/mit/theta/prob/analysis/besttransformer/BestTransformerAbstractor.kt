@@ -139,6 +139,7 @@ class BestTransformerAbstractor<S : State, A : Action, P : Prec>(
                 null,
                 mustBeTarget
             )
+            predecessors[initialNode] = hashSetOf()
         }
 
         override val initialNode: BestTransformerGameNode<S, A>
@@ -160,39 +161,45 @@ class BestTransformerAbstractor<S : State, A : Action, P : Prec>(
             }
         }
 
+        private val resultCache = hashMapOf<
+                Pair<BestTransformerGameNode<S, A>,BestTransformerGameAction<S, A>>,
+            FiniteDistribution<BestTransformerGameNode<S, A>>>()
         override fun getResult(
             node: BestTransformerGameNode<S, A>,
             action: BestTransformerGameAction<S, A>
         ): FiniteDistribution<BestTransformerGameNode<S, A>> {
-            val result: FiniteDistribution<BestTransformerGameNode<S, A>> = when (node) {
-                is AbstractionChoiceNode -> {
-                    when (action) {
-                        is AbstractionChoice -> dirac(ConcreteChoiceNode(action.commandResults))
-                        is ConcreteChoice -> throw IllegalArgumentException()
-                    }
-                }
-
-                is ConcreteChoiceNode -> {
-                    when (action) {
-                        is AbstractionChoice -> throw IllegalArgumentException()
-                        is ConcreteChoice -> node.commandResults[action.command]!!.transform {
-                            val mayBeTarget = maySatisfy(it.second, targetExpr)
-                            val mustBeTarget = mustSatisfy(it.second, targetExpr)
-                            require(mustBeTarget == mayBeTarget) {
-                                "The abstraction must be exact with respect to the target labels/rewards for now"
+            val result: FiniteDistribution<BestTransformerGameNode<S, A>> =
+                resultCache.getOrPut(node to action) {
+                    when (node) {
+                        is AbstractionChoiceNode -> {
+                            when (action) {
+                                is AbstractionChoice -> dirac(ConcreteChoiceNode(action.commandResults))
+                                is ConcreteChoice -> throw IllegalArgumentException()
                             }
-                            AbstractionChoiceNode(
-                                it.second,
-                                if (mayBeTarget) 1 else 0,
-                                if (mustBeTarget) 1 else 0,
-                                targetExpr,
-                                null,
-                                mustBeTarget
-                            )
+                        }
+
+                        is ConcreteChoiceNode -> {
+                            when (action) {
+                                is AbstractionChoice -> throw IllegalArgumentException()
+                                is ConcreteChoice -> node.commandResults[action.command]!!.transform {
+                                    val mayBeTarget = maySatisfy(it.second, targetExpr)
+                                    val mustBeTarget = mustSatisfy(it.second, targetExpr)
+                                    require(mustBeTarget == mayBeTarget) {
+                                        "The abstraction must be exact with respect to the target labels/rewards for now"
+                                    }
+                                    AbstractionChoiceNode(
+                                        it.second,
+                                        if (mayBeTarget) 1 else 0,
+                                        if (mustBeTarget) 1 else 0,
+                                        targetExpr,
+                                        null,
+                                        mustBeTarget
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-            }
             if (trackPredecessors) {
                 for (resultNode in result.support) {
                     predecessors.getOrPut(resultNode) { hashSetOf() }.add(node)

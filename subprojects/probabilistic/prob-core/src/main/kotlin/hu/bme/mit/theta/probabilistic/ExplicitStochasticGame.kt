@@ -80,7 +80,11 @@ class ExplicitStochasticGame private constructor(
     override fun getAvailableActions(node: Node): Collection<Edge> =
         outgoingEdges[node] ?: listOf()
 
-    override fun materialize() = this to this.nodes.associateWith { it } //TODO identity function instead of a map?
+    override fun materialize() =
+        StochasticGame.MaterializationResult(
+            this,
+            this.nodes.associateWith { it } //TODO identity function instead of a map?
+        )
 
     override fun getAllNodes() = nodes
 

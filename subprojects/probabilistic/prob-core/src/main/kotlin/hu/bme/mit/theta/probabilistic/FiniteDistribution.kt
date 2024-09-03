@@ -14,13 +14,30 @@ class FiniteDistribution<D>(
         }
     }
 
+    /**
+     * Probability Mass Function of the distribution mapping each choice with non-zero probability to its probability.
+     */
     val pmf = _pmf.filter { it.value > 0.0 }
     constructor(vararg components: Pair<D, Double>): this(components.toMap())
 
+    /**
+     * Returns the probability of v.
+     */
     operator fun get(v: D) = pmf.getOrDefault(v, 0.0)
+
+    /**
+     * Returns the list of all non-zero-probability outcomes.
+     */
     val support get() = pmf.keys.toList()
 
+    /**
+     * Computes the expected value of the function f according to this distribution.
+     */
     fun expectedValue(f: (D)->Double) = pmf.entries.sumOf { it.value * f(it.key) }
+
+    /**
+     * Returns the distribution of f(X), where X is distributed according to the receiver (this) distribution.
+     */
     fun <E> transform(f: (D)->E): FiniteDistribution<E> {
         val result = hashMapOf<E, Double>()
         for ((k, v) in pmf) {
@@ -30,6 +47,9 @@ class FiniteDistribution<D>(
         return FiniteDistribution(result)
     }
 
+    /**
+     * Generates a random sample from this distribution.
+     */
     fun sample(random: Random = Random.Default): D {
         val r = random.nextDouble()
         var cumsum = 0.0

@@ -3,7 +3,7 @@ package hu.bme.mit.theta.probabilistic
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGBVISolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
-import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.UntargetSetUpperInitializer
+import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetUntargetCombinedInitializer
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -26,18 +26,16 @@ class SolverTest(
     fun viSolverTest() {
         val tolerance = 1e-8
         val solver = VISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
-            TargetRewardFunction(input.targets::contains),
-            TargetSetLowerInitializer(input.targets::contains),
             tolerance,
             false
         )
         for ((goal, expectedResult) in input.expectedReachability) {
-            val analysisTask = AnalysisTask(input.game, goal)
+            val analysisTask = AnalysisTask(input.game, goal, TargetRewardFunction(input.targets::contains))
             assert(
                 // This assertion does not hold for all possible games even if VI is implemented correctly,
                 // but as the test games are not constructed to be counterexamples for standard VI, it hopefully
                 // does for them
-                solver.solve(analysisTask)[input.game.initialNode]!!.equals(expectedResult, tolerance)
+                solver.solve(analysisTask, TargetSetLowerInitializer(input.targets::contains))[input.game.initialNode]!!.equals(expectedResult, tolerance)
             )
         }
     }
@@ -46,17 +44,15 @@ class SolverTest(
     fun viSolverGSTest() {
         val tolerance = 1e-8
         val solver = VISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
-            TargetRewardFunction(input.targets::contains),
-            TargetSetLowerInitializer(input.targets::contains),
             tolerance, true,
         )
         for ((goal, expectedResult) in input.expectedReachability) {
-            val analysisTask = AnalysisTask(input.game, goal)
+            val analysisTask = AnalysisTask(input.game, goal, TargetRewardFunction(input.targets::contains))
             assert(
                 // This assertion does not hold for all possible games even if VI is implemented correctly,
                 // but as the test games are not constructed to be counterexamples for standard VI, it hopefully
                 // does for them
-                solver.solve(analysisTask)[input.game.initialNode]!!.equals(expectedResult, tolerance)
+                solver.solve(analysisTask, TargetSetLowerInitializer(input.targets::contains))[input.game.initialNode]!!.equals(expectedResult, tolerance)
             )
         }
     }
@@ -64,17 +60,17 @@ class SolverTest(
     @Test
     fun bviSolverTest() {
         val tolerance = 1e-8
+        val initializer = TargetUntargetCombinedInitializer<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
+            input.targets::contains,
+            { it.outgoingEdges.size == 1 && it.outgoingEdges.first().end.support == setOf(it) && it !in input.targets }
+        )
         val solver = SGBVISolver<ExplicitStochasticGame.Node, ExplicitStochasticGame.Edge>(
             tolerance,
-            lowerInitializer = TargetSetLowerInitializer(input.targets::contains),
-            upperInitilizer = UntargetSetUpperInitializer {
-                it.outgoingEdges.size == 1 && it.outgoingEdges.first().end.support == setOf(it) && it !in input.targets
-            },
-            false
+            useGS = false
         )
         for ((goal, expectedResult) in input.expectedReachability) {
-            val analysisTask = AnalysisTask(input.game, goal)
-            val solution = solver.solve(analysisTask)
+            val analysisTask = AnalysisTask(input.game, goal, TargetRewardFunction(input.targets::contains))
+            val solution = solver.solve(analysisTask, initializer)
             assert(
                 solution[input.game.initialNode]!!.equals(expectedResult, tolerance)
             )

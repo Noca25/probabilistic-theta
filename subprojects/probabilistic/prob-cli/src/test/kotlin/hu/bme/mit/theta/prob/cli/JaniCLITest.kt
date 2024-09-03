@@ -14,4 +14,18 @@ class JaniCLITest {
             "--seq"
         ))
     }
+
+    @Test
+    fun fullTest() {
+        JaniCLI().parse(listOf(
+            "-i", "F:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\beb\\beb.3-4.jani",
+            "-p",
+            "N=3,K=2,reset=false,deadline=10",
+            "--abstraction", "BT",
+            "--algorithm", "VI",
+            "--domain", "PRED",
+            "--approximation", "UPPER",
+            "--elim"
+        ))
+    }
 }

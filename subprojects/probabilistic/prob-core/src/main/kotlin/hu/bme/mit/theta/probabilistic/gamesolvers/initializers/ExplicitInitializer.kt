@@ -7,7 +7,8 @@ class ExplicitInitializer<N, A>(
     val upperBound: Map<N, Double>,
     val defaultLower: Double,
     val defaultUpper: Double,
-    val convergenceThreshold: Double
+    val convergenceThreshold: Double,
+    val strategy: Map<N, A>
 ): SGSolutionInitializer<N, A> {
     override fun initialLowerBound(n: N): Double =
         lowerBound[n] ?: defaultLower
@@ -17,4 +18,6 @@ class ExplicitInitializer<N, A>(
 
     override fun isKnown(n: N): Boolean =
         initialUpperBound(n) - initialUpperBound(n) <= convergenceThreshold
+
+    override fun initialStrategy(): Map<N, A> = strategy
 }

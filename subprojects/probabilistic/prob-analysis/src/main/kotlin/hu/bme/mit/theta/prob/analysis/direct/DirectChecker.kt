@@ -13,7 +13,6 @@ import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpandableNode
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpansionResult
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTargetInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
 import java.util.*
@@ -28,10 +27,7 @@ class DirectChecker<S: State, A: StmtAction>(
 
     val transFunc: TransFunc<S, in A, ExplPrec>,
     val fullPrec: ExplPrec,
-    val mdpSolverSupplier:
-        (rewardFunction: GameRewardFunction<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>>,
-         initializer: SGSolutionInitializer<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>>)
-    -> StochasticGameSolver<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>>,
+    val mdpSolver: StochasticGameSolver<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>>,
     val useQualitativePreprocessing: Boolean = false,
     val verboseLogging: Boolean = false
 ) {
@@ -73,10 +69,10 @@ class DirectChecker<S: State, A: StmtAction>(
             println("All nodes: ${game.reachedSet.size}")
             return initializer.initialLowerBound(game.initNode)
         }
-        val quantSolver = mdpSolverSupplier(rewardFunction, initializer)
+        val quantSolver = mdpSolver
 
-        val analysisTask = AnalysisTask(game, {goal})
-        val values = quantSolver.solve(analysisTask)
+        val analysisTask = AnalysisTask(game, {goal}, rewardFunction)
+        val values = quantSolver.solve(analysisTask, initializer)
 
         timer.stop()
         val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
@@ -95,7 +91,7 @@ class DirectChecker<S: State, A: StmtAction>(
         val waitlist: Queue<NodeClass> = ArrayDeque<NodeClass>().apply { add(initNode) }
         val reachedSet = hashMapOf(initState to initNode)
 
-        override fun materialize(): Pair<ExplicitStochasticGame, Map<NodeClass, ExplicitStochasticGame.Node>> {
+        override fun materialize(): StochasticGame.MaterializationResult<NodeClass> {
             getAllNodes() //forces full exploration to make sure all nodes have been expanded
             return super.materialize()
         }

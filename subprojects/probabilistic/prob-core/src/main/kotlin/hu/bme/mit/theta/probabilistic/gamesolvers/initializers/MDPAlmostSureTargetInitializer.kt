@@ -2,6 +2,7 @@ package hu.bme.mit.theta.probabilistic.gamesolvers.initializers
 
 import hu.bme.mit.theta.probabilistic.ExplicitStochasticGame
 import hu.bme.mit.theta.probabilistic.Goal
+import hu.bme.mit.theta.probabilistic.Goal.MAX
 import hu.bme.mit.theta.probabilistic.StochasticGame
 import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.almostSureMaxForMDP
@@ -20,9 +21,9 @@ class MDPAlmostSureTargetInitializer<N, A>(
     private val almostSureReaching = hashSetOf<N>()
 
     private val _materialized = mdp.materialize()
-    private val materialized = _materialized.first
-    private val matmap = _materialized.second
-    private val backmatmap= matmap.entries.associate { it.value to it.key }
+    private val materialized = _materialized.materializedGame
+    private val matmap = _materialized.originalToMaterializedNodeMapping
+    private val backmatmap = matmap.entries.associate { it.value to it.key }
     private fun Collection<ExplicitStochasticGame.Node>.onOriginal() =
         this.map { backmatmap[it]!! }
     private fun isMaterializedTarget(n: ExplicitStochasticGame.Node) =
@@ -50,7 +51,7 @@ class MDPAlmostSureTargetInitializer<N, A>(
 
     private fun computeAlmostSureReaching() {
         almostSureReaching.clear()
-        if(goal == Goal.MAX) {
+        if(goal == MAX) {
             almostSureReaching.addAll(almostSureMaxForMDP(materialized, materTargets).onOriginal())
         } else {
             almostSureReaching.addAll(almostSureMinForMDP(materialized, materTargets).onOriginal())
@@ -71,6 +72,17 @@ class MDPAlmostSureTargetInitializer<N, A>(
 
     override fun isKnown(n: N): Boolean {
         return n in almostSureReaching || n in sureAvoiding
+    }
+
+    override fun initialStrategy(): Map<N, A> {
+        if(goal == MAX) {
+            TODO("starting from the targets go backwards through the almost sure reaching nodes and choose an action which surely enters ")
+        } else {
+            return sureAvoiding.associateWith {
+                TODO("add almost sure reaching as well?")
+                mdp.getAvailableActions(it).find { a -> mdp.getResult(it, a).support.all { it in sureAvoiding } }!!
+            }
+        }
     }
 
 }

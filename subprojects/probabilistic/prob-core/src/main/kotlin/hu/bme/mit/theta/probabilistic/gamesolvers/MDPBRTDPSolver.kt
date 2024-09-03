@@ -5,12 +5,38 @@ import java.util.*
 import kotlin.math.max
 import kotlin.math.min
 
+/**
+ * Implements the Bounded Real-Time Dynamic Programming algorithm for Markov Decision Processes, i.e. Stochastic Games with a single player
+ * (or all players aiming for the same goal). Uses virtual merging of Maximal End Components to ensure convergence of the upper bound.
+ */
 class MDPBRTDPSolver<N : ExpandableNode<N>, A>(
-    val rewardFunction: TargetRewardFunction<N, A>,
+    /**
+     * Specifies how the next node is selected during trace generation based on the current node,
+     * the current lower and upper value bounds, and the goal.
+     */
     val successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N,
+
+    /**
+     * Specifies the convergence threshold, i.e. the maximum difference between the upper and lower value
+     * bound of the initial node after termination.
+     */
     val threshold: Double = 1e-7,
+
+    /**
+     * If true, the Bellman step is iterated until convergence after each trace generation
+     * instead of performing it only once per trace.
+     */
     val convergeEachStep: Boolean = false,
+
+
+    /**
+     * Specifies which values to update after simulating a trace
+     */
     val updateStrategy: UpdateStrategy = UpdateStrategy.TRACE,
+
+    /**
+     * Called after each trace generation.
+     */
     val progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
     = { _, _, _, _ -> }
 ) : StochasticGameSolver<N, A> {
@@ -41,22 +67,13 @@ class MDPBRTDPSolver<N : ExpandableNode<N>, A>(
         PROPAGATE_TRACE
     }
 
-    companion object {
-        fun <N : ExpandableNode<N>, A> supplier(
-            threshold: Double,
-            successorSelection: StochasticGame<N, A>.(N, L: Map<N, Double>, U: Map<N, Double>, Goal) -> N,
-            convergeEachStep: Boolean = false,
-            updateStrategy: UpdateStrategy = UpdateStrategy.TRACE,
-            progressReport: (iteration: Int, reachedSet: Set<N>, linit: Double, uinit: Double) -> Unit
-            = { _, _, _, _ -> }
-        ) = { rewardFunction: GameRewardFunction<N, A>,
-              initializer: SGSolutionInitializer<N, A> ->
-            require(rewardFunction is TargetRewardFunction<N, A>) { "BRTDP implemented only for reachability yet" }
-            MDPBRTDPSolver(rewardFunction, successorSelection, threshold, convergeEachStep, updateStrategy, progressReport)
-        }
-    }
+    override fun solve(analysisTask: AnalysisTask<N, A>, initializer: SGSolutionInitializer<N, A>): Map<N, Double> {
+        val rewardFunction = analysisTask.rewardFunction as? TargetRewardFunction<N, A>
+            ?: throw IllegalArgumentException(
+                "The MDP BRTDP solver implementation only supports probabilistic reachability properties for now. " +
+                        "The reward function must be a TargetRewardFunction."
+            )
 
-    override fun solve(analysisTask: AnalysisTask<N, A>): Map<N, Double> {
         val game = analysisTask.game
         val initNode = game.initialNode
         require(!initNode.isExpanded()) { "Game already explored before BRTDP was called!" }
@@ -77,8 +94,7 @@ class MDPBRTDPSolver<N : ExpandableNode<N>, A>(
             // ---------------------------------------------------------------------------------------------------------
             // Logging for experiments
             i++
-            if (i % 100 == 0)
-                progressReport(i, reachedSet, L[initNode]!!, U[initNode]!!)
+            progressReport(i, reachedSet, L[initNode]!!, U[initNode]!!)
             //----------------------------------------------------------------------------------------------------------
 
             // simulate a single trace
@@ -245,7 +261,7 @@ class MDPBRTDPSolver<N : ExpandableNode<N>, A>(
         return scc
     }
 
-    override fun solveWithStrategy(analysisTask: AnalysisTask<N, A>): Pair<Map<N, Double>, Map<N, A>> {
+    override fun solveWithStrategy(analysisTask: AnalysisTask<N, A>, initializer: SGSolutionInitializer<N, A>): Pair<Map<N, Double>, Map<N, A>> {
         TODO("Not yet implemented")
     }
 

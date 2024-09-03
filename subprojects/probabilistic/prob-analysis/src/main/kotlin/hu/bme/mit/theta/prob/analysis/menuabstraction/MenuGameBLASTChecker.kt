@@ -10,7 +10,6 @@ import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.prob.analysis.P_CONCRETE
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommandLTS
 import hu.bme.mit.theta.probabilistic.AnalysisTask
-import hu.bme.mit.theta.probabilistic.GameRewardFunction
 import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 
@@ -25,7 +24,7 @@ class MenuGameBLASTChecker<S : ExprState, A : StmtAction, P : Prec>(
     val refiner: MenuGameRefiner<S, A, P, *>,
     val extendPrec: P.(P) -> P,
     val gameSolverSupplier: (
-        GameRewardFunction<MenuGameNode<S, A>, MenuGameAction<S, A>>
+
     ) -> StochasticGameSolver<
             MenuGameNode<S, A>,
             MenuGameAction<S, A>
@@ -51,10 +50,12 @@ class MenuGameBLASTChecker<S : ExprState, A : StmtAction, P : Prec>(
         )
         while (true) {
             game.fullyExplore()
-            val upperAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MAX })
-            val lowerAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MIN })
-            val lowerValues = gameSolverSupplier(MenuGameLowerRewardFunc()).solveWithStrategy(lowerAnalysisTask)
-            val upperValues = gameSolverSupplier(MenuGameUpperRewardFunc()).solveWithStrategy(upperAnalysisTask)
+            val lowerInitializer = TODO()
+            val upperInitializer = TODO()
+            val lowerAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MIN }, MenuGameLowerRewardFunc())
+            val upperAnalysisTask = AnalysisTask(game, { if (it == P_CONCRETE) goal else Goal.MAX }, MenuGameUpperRewardFunc())
+            val lowerValues = gameSolverSupplier().solveWithStrategy(lowerAnalysisTask, lowerInitializer)
+            val upperValues = gameSolverSupplier().solveWithStrategy(upperAnalysisTask, upperInitializer)
             if (upperValues.first[game.initialNode]!! - lowerValues.first[game.initialNode]!! < threshold) {
                 return BLASTMenuGameCheckerResult(
                     lowerValues.first[game.initialNode]!!,

@@ -44,6 +44,7 @@ class MenuGameAbstractor<S : State, A : Action, P : Prec>(
             targetExpr,
             maySatisfy,
             mustSatisfy,
+            trackPredecessors
         )
 
         return AbstractionResult(game, rewardFunMin, rewardFunMax)
@@ -62,6 +63,8 @@ class MenuGameAbstractor<S : State, A : Action, P : Prec>(
         BacktrackableGame<MenuGameNode<S, A>> {
 
         private val _initialNode: MenuGameNode<S, A>
+        private val predecessors = hashMapOf<MenuGameNode<S, A>, MutableSet<MenuGameNode<S, A>>>()
+
 
         init {
             val initState = init.getInitStates(prec).first() // TODO: cannot handle multiple abstract inits yet
@@ -75,6 +78,7 @@ class MenuGameAbstractor<S : State, A : Action, P : Prec>(
                 null,
                 mustBeTarget
             )
+            predecessors[_initialNode] = hashSetOf()
         }
 
         override val initialNode: MenuGameNode<S, A>
@@ -84,7 +88,6 @@ class MenuGameAbstractor<S : State, A : Action, P : Prec>(
         val trapDecision = MenuGameAction.EnterTrap<S, A>()
         val trapDirac = dirac(trapNode as MenuGameNode<S, A>)
 
-        private val predecessors = hashMapOf<MenuGameNode<S, A>, MutableSet<MenuGameNode<S, A>>>()
 
 
         override fun getPlayer(node: MenuGameNode<S, A>): Int = node.player
@@ -140,7 +143,9 @@ class MenuGameAbstractor<S : State, A : Action, P : Prec>(
             return when (node) {
                 is MenuGameNode.StateNode -> transFuncCache.getOrPut(node) {
                     if (node.absorbing || node.s.isBottom) listOf()
-                    else lts.getAvailableCommands(node.s).map { MenuGameAction.ChosenCommand(it) }
+                    else lts.getAvailableCommands(node.s).filter {
+                        maySatisfy(node.s, it.guard)
+                    }.map { MenuGameAction.ChosenCommand(it) }
                 }
 
                 is MenuGameNode.ResultNode -> transFuncCache.getOrPut(node) {

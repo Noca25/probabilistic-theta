@@ -12,5 +12,8 @@ class TargetSetLowerInitializer<N, A>(
 
     override fun initialUpperBound(n: N) = 1.0
     override fun isKnown(n: N): Boolean = isTarget(n)
+    override fun initialStrategy(): Map<N, A> {
+        return mapOf()
+    }
 
 }

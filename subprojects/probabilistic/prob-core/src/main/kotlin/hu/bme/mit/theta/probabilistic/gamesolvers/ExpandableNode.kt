@@ -4,8 +4,7 @@ interface ExpandableNode<N: ExpandableNode<N>> {
     fun isExpanded(): Boolean
 
     /**
-     * Returns: (newlyDiscovered, revisited)
-     * Ensures: receiver.isExpanded
+     * Must ensure: receiver.isExpanded
      */
     fun expand(): ExpansionResult<N>
 }

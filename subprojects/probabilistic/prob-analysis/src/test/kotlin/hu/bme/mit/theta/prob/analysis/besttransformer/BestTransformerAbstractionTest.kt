@@ -120,12 +120,12 @@ class BestTransformerAbstractionTest {
     ) {
         val materResult = sg.materialize()
         val viz = GraphvizWriter.getInstance().writeString(
-            materResult.first.visualize(
-                lowerValues.mapKeys { materResult.second[it.key]!! },
-                upperValues.mapKeys { materResult.second[it.key]!! },
+            materResult.materializedGame.visualize(
+                lowerValues.mapKeys { materResult.originalToMaterializedNodeMapping[it.key]!! },
+                upperValues.mapKeys { materResult.originalToMaterializedNodeMapping[it.key]!! },
                 sg.getAllNodes().filter {
                     it is AbstractionChoiceNode && it.maxReward == 1
-                }.map { materResult.second[it]!! }.associateWith { Color(255, 150, 150) }
+                }.map { materResult.originalToMaterializedNodeMapping[it]!! }.associateWith { Color(255, 150, 150) }
             )
         )
         println(viz)
@@ -144,26 +144,24 @@ class BestTransformerAbstractionTest {
                     >
             > {
         val lowerAnalysisTask =
-            AnalysisTask(abstraction.game, setGoal(P_CONCRETE to Goal.MAX, P_ABSTRACTION to Goal.MIN))
-        val lowerSolution = VISolver(
-            abstraction.rewardMin,
-            TargetSetLowerInitializer {
-                it is AbstractionChoiceNode && abstraction.rewardMin(it) == 1.0
-            },
+            AnalysisTask(abstraction.game, setGoal(P_CONCRETE to Goal.MAX, P_ABSTRACTION to Goal.MIN), abstraction.rewardMin)
+        val lowerSolution =
+            VISolver<BestTransformerGameNode<S, StmtAction>, BestTransformerGameAction<S, StmtAction>>(
             1e-6,
             false
-        ).solveWithStrategy(lowerAnalysisTask)
+        ).solveWithStrategy(lowerAnalysisTask, TargetSetLowerInitializer {
+                it is AbstractionChoiceNode && abstraction.rewardMin(it) == 1.0
+            })
 
         val upperAnalysisTask =
-            AnalysisTask(abstraction.game, setGoal(P_CONCRETE to Goal.MAX, P_ABSTRACTION to Goal.MAX))
-        val upperSolution = VISolver(
-            abstraction.rewardMax,
-            TargetSetLowerInitializer {
-                it is AbstractionChoiceNode && abstraction.rewardMax(it) == 1.0
-            },
+            AnalysisTask(abstraction.game, setGoal(P_CONCRETE to Goal.MAX, P_ABSTRACTION to Goal.MAX), abstraction.rewardMax)
+        val upperSolution =
+            VISolver<BestTransformerGameNode<S, StmtAction>, BestTransformerGameAction<S, StmtAction>>(
             1e-6,
             false
-        ).solveWithStrategy(upperAnalysisTask)
+        ).solveWithStrategy(upperAnalysisTask, TargetSetLowerInitializer {
+                it is AbstractionChoiceNode && abstraction.rewardMax(it) == 1.0
+            })
         return Pair(lowerSolution, upperSolution)
     }
 

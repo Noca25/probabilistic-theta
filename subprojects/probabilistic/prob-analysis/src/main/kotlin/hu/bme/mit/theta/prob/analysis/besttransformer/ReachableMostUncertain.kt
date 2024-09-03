@@ -8,9 +8,7 @@ import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.
 import hu.bme.mit.theta.probabilistic.StochasticGame
 import java.util.*
 
-class ReachableMostUncertain(
-    val useMinStrategy: Boolean = false,
-): PivotSelectionStrategy {
+class ReachableMostUncertain(): PivotSelectionStrategy {
     override fun <S : State, A : Action> selectPivot(
         sg: StochasticGame<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>,
         refinableNodes: List<AbstractionChoiceNode<S, A>>,
@@ -21,19 +19,21 @@ class ReachableMostUncertain(
     ): AbstractionChoiceNode<S, A> {
         val reachable = hashSetOf(sg.initialNode)
         val waitList: Queue<BestTransformerGameNode<S, A>> = ArrayDeque()
-        waitList.add(sg.initialNode)
-        val strategy = if(useMinStrategy) strategyMin else strategyMax
-        while (waitList.isNotEmpty()) {
-            val curr = waitList.remove()
-            if(curr !in strategy) continue // curr should be absorbing in this case
-            for (nextNode in sg.getResult(curr, strategy[curr]!!).support) {
-                if (nextNode !in reachable) {
-                    reachable.add(nextNode)
-                    waitList.add(nextNode)
+        for(strategy in listOf(strategyMax, strategyMin)) {
+            waitList.add(sg.initialNode)
+            while (waitList.isNotEmpty()) {
+                val curr = waitList.remove()
+                if (curr !in strategy) continue // curr should be absorbing in this case
+                for (nextNode in sg.getResult(curr, strategy[curr]!!).support) {
+                    if (nextNode !in reachable) {
+                        reachable.add(nextNode)
+                        waitList.add(nextNode)
+                    }
                 }
             }
         }
         return reachable
+            .intersect(refinableNodes)
             .filterIsInstance<AbstractionChoiceNode<S, A>>()
             .maxByOrNull { valueFunctionMax[it]!! - valueFunctionMin[it]!! }!!
     }

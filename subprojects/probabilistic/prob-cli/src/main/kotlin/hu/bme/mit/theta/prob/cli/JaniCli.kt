@@ -38,7 +38,6 @@ import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.PredLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.linkedtransfuncs.SMDPLinkedTransFunc
 import hu.bme.mit.theta.prob.analysis.menuabstraction.*
 import hu.bme.mit.theta.prob.cli.JaniCLI.Domain.*
-import hu.bme.mit.theta.probabilistic.GameRewardFunction
 import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.*
@@ -191,31 +190,36 @@ class JaniCLI : CliktCommand() {
             if(sequenceInterpolation) ExprTraceSeqItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
             else ExprTraceBwBinItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
         return when(domain) {
-            PRED -> return menuHelper(
-                solver,
-                itpSolver,
-                ucSolver,
-                task,
-                model,
-                PredInitFunc.create(
-                    PredAbstractors.booleanSplitAbstractor(solver),
-                    model.getFullInitExpr()
-                ),
-                PredLinkedTransFunc(solver),
-                smdpCanBeDisabled(predCanBeDisabled(solver)),
-                smdpMaySatisfy(predMaySatisfy(solver)),
-                smdpMustSatisfy(predMustSatisfy(solver)),
-                PredPrec.of(task.targetExpr),
-                {this.join(PredPrec.of(it))},
-                when(algorithm) {
-                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
-                    Algorithm.VI -> VISolver.supplier(threshold)
-                    Algorithm.BRTDP -> TODO()
-                },
-                eliminateSpurious,
-                traceChecker,
-                ItpRefToPredPrec(ExprSplitters.atoms())
-            )
+            PRED -> {
+                val exprSplitter = ExprSplitters.atoms()
+                return menuHelper(
+                    solver,
+                    itpSolver,
+                    ucSolver,
+                    task,
+                    model,
+                    PredInitFunc.create(
+                        PredAbstractors.booleanSplitAbstractor(solver),
+                        model.getFullInitExpr()
+                    ),
+                    PredLinkedTransFunc(solver),
+                    smdpCanBeDisabled(predCanBeDisabled(solver)),
+                    smdpMaySatisfy(predMaySatisfy(solver)),
+                    smdpMustSatisfy(predMustSatisfy(solver)),
+                    PredPrec.of(task.targetExpr),
+                    {
+                        this.join(PredPrec.of(exprSplitter.apply(it)))
+                    },
+                    when(algorithm) {
+                        Algorithm.BVI -> SGBVISolver(threshold)
+                        Algorithm.VI -> VISolver(threshold)
+                        Algorithm.BRTDP -> TODO()
+                    },
+                    eliminateSpurious,
+                    traceChecker,
+                    ItpRefToPredPrec(exprSplitter)
+                )
+            }
             EXPL -> menuHelper(
                 solver,
                 itpSolver,
@@ -233,8 +237,8 @@ class JaniCLI : CliktCommand() {
                 ExplPrec.of(ExprUtils.getVars(task.targetExpr)),
                 {this.join(ExplPrec.of(ExprUtils.getVars(it)))},
                 when(algorithm) {
-                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
-                    Algorithm.VI -> VISolver.supplier(threshold)
+                    Algorithm.BVI -> SGBVISolver(threshold)
+                    Algorithm.VI -> VISolver(threshold)
                     Algorithm.BRTDP -> TODO()
                 },
                 eliminateSpurious,
@@ -258,10 +262,7 @@ class JaniCLI : CliktCommand() {
         mustSatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
         initPrec: P,
         extend: P.(basedOn: Expr<BoolType>) -> P,
-        quantSolverSupplier: (
-            GameRewardFunction<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>,
-                SGSolutionInitializer<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>
-                ) -> StochasticGameSolver<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>,
+        quantSolver: StochasticGameSolver<MenuGameNode<SMDPState<D>, SMDPCommandAction>, MenuGameAction<SMDPState<D>, SMDPCommandAction>>,
         eliminateSpurious: Boolean,
         traceChecker: ExprTraceChecker<R>,
         refToPrec: RefutationToPrec<P, R>
@@ -290,7 +291,7 @@ class JaniCLI : CliktCommand() {
         val checker = MenuGameCegarChecker(
             abstractor,
             refiner,
-            quantSolverSupplier
+            quantSolver
         )
         return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
     }
@@ -306,28 +307,31 @@ class JaniCLI : CliktCommand() {
             if(sequenceInterpolation) ExprTraceSeqItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
             else ExprTraceBwBinItpChecker.create(model.getFullInitExpr(), BoolExprs.True(), itpSolver)
         return when(domain) {
-            PRED -> bestTransformerHelper(
-                solver, itpSolver, ucSolver, task, model,
-                PredInitFunc.create(
-                    PredAbstractors.booleanSplitAbstractor(solver),
-                    model.getFullInitExpr()
-                ),
-                PredLinkedTransFunc(solver),
-                smdpGetGuardSatisfactionConfigs(predGetGuardSatisfactionConfigs(solver)),
-                smdpMaySatisfy(predMaySatisfy(solver)),
-                smdpMustSatisfy(predMustSatisfy(solver)),
-                PredPrec.of(task.targetExpr),
-                {this.join(PredPrec.of(it))},
-                when(algorithm) {
-                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
-                    Algorithm.VI -> VISolver.supplier(threshold)
-                    Algorithm.BRTDP -> TODO()
-                },
-                ReachableMostUncertain(),
-                eliminateSpurious,
-                traceChecker,
-                ItpRefToPredPrec(ExprSplitters.atoms())
-            )
+            PRED -> {
+                val exprSplitter = ExprSplitters.atoms()
+                bestTransformerHelper(
+                    solver, itpSolver, ucSolver, task, model,
+                    PredInitFunc.create(
+                        PredAbstractors.booleanSplitAbstractor(solver),
+                        model.getFullInitExpr()
+                    ),
+                    PredLinkedTransFunc(solver),
+                    smdpGetGuardSatisfactionConfigs(predGetGuardSatisfactionConfigs(solver)),
+                    smdpMaySatisfy(predMaySatisfy(solver)),
+                    smdpMustSatisfy(predMustSatisfy(solver)),
+                    PredPrec.of(task.targetExpr),
+                    { this.join(PredPrec.of(exprSplitter.apply(it))) },
+                    when(algorithm) {
+                        Algorithm.BVI -> SGBVISolver(threshold)
+                        Algorithm.VI -> VISolver(threshold)
+                        Algorithm.BRTDP -> TODO()
+                    },
+                    ReachableMostUncertain(),
+                    eliminateSpurious,
+                    traceChecker,
+                    ItpRefToPredPrec(exprSplitter)
+                )
+            }
             EXPL -> bestTransformerHelper(
                 solver, itpSolver, ucSolver, task, model,
                 ExplInitFunc.create(
@@ -341,8 +345,8 @@ class JaniCLI : CliktCommand() {
                 ExplPrec.of(ExprUtils.getVars(task.targetExpr)),
                 {this.join(ExplPrec.of(ExprUtils.getVars(it)))},
                 when(algorithm) {
-                    Algorithm.BVI -> MDPBVISolver.supplier(threshold)
-                    Algorithm.VI -> VISolver.supplier(threshold)
+                    Algorithm.BVI -> SGBVISolver(threshold)
+                    Algorithm.VI -> VISolver(threshold)
                     Algorithm.BRTDP -> TODO()
                 },
                 ReachableMostUncertain(),
@@ -369,10 +373,7 @@ class JaniCLI : CliktCommand() {
         mustSatisfy: (SMDPState<D>, Expr<BoolType>) -> Boolean,
         initPrec: P,
         extend: P.(basedOn: Expr<BoolType>) -> P,
-        quantSolverSupplier:
-            (GameRewardFunction<BestTransformerGameNode<SMDPState<D>, SMDPCommandAction>, BestTransformerGameAction<SMDPState<D>, SMDPCommandAction>>,
-             SGSolutionInitializer<BestTransformerGameNode<SMDPState<D>, SMDPCommandAction>, BestTransformerGameAction<SMDPState<D>, SMDPCommandAction>>
-                    ) -> StochasticGameSolver<BestTransformerGameNode<SMDPState<D>, SMDPCommandAction>, BestTransformerGameAction<SMDPState<D>, SMDPCommandAction>>,
+        quantSolver: StochasticGameSolver<BestTransformerGameNode<SMDPState<D>, SMDPCommandAction>, BestTransformerGameAction<SMDPState<D>, SMDPCommandAction>>,
         pivotSelectionStrategy: PivotSelectionStrategy,
         eliminateSpurious: Boolean,
         traceChecker: ExprTraceChecker<R>,
@@ -398,7 +399,7 @@ class JaniCLI : CliktCommand() {
         val checker = BestTransformerCegarChecker(
             abstractor,
             refiner,
-            quantSolverSupplier
+            quantSolver
         )
         return checker.check(initPrec, task.goal, threshold).finalUpperInitValue
     }
@@ -442,14 +443,14 @@ class JaniCLI : CliktCommand() {
             WEIGHTED_RANDOM -> SMDPDirectCheckerGame::weightedRandomSelection
         }
         val quantSolverSupplier = when (algorithm) {
-            Algorithm.BVI -> MDPBVISolver.supplier(threshold)
-            Algorithm.VI -> VISolver.supplier(threshold)
-            Algorithm.BRTDP -> MDPBRTDPSolver.supplier(
-                threshold,
-                successorSelection
+            Algorithm.BVI -> MDPBVISolver(threshold)
+            Algorithm.VI -> VISolver(threshold)
+            Algorithm.BRTDP -> MDPBRTDPSolver(
+                successorSelection,
+                threshold
             ) { iteration, reachedSet, linit, uinit ->
                 if (verbose) {
-                    println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
+                    if(iteration % 1000 == 0) println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
                 }
             }
         }

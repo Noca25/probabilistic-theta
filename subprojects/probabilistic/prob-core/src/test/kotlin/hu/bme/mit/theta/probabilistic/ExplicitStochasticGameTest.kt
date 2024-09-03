@@ -1,6 +1,6 @@
 package hu.bme.mit.theta.probabilistic
 
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ExplicitStochasticGameTest {
@@ -52,7 +52,7 @@ class ExplicitStochasticGameTest {
             }
 
             override fun getAllNodes(): Collection<Int> = (0..10).toList()
-        }.materialize().first
+        }.materialize().materializedGame
         val allNodes = materGame.getAllNodes()
         assertEquals(11, allNodes.size)
         val init = materGame.initialNode

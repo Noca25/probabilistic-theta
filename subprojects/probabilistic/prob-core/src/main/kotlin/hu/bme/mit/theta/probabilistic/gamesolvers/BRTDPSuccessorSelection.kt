@@ -5,6 +5,9 @@ import hu.bme.mit.theta.probabilistic.Goal
 import hu.bme.mit.theta.probabilistic.StochasticGame
 import kotlin.random.Random
 
+/**
+ * Random selection based on the original result distribution.
+ */
 private val random = Random(123)
 fun <N, A> StochasticGame<N, A>.randomSelection(
     currNode: N,
@@ -26,6 +29,9 @@ fun <N, A> StochasticGame<N, A>.randomSelection(
     return result
 }
 
+/**
+ * Random selection with weights based on the difference between the lower and the upper bound for the nodes value.
+ */
 fun <N, A> StochasticGame<N, A>.diffBasedSelection(
     currNode: N,
     L: Map<N, Double>,
@@ -60,6 +66,10 @@ fun <N, A> StochasticGame<N, A>.diffBasedSelection(
     }
 }
 
+/**
+ * Random selection where the probability of selecting a node is proportional to the
+ * product of its original result probability and the difference between its value bounds.
+ */
 fun <N, A> StochasticGame<N, A>.weightedRandomSelection(
     currNode: N,
     L: Map<N, Double>,
@@ -84,4 +94,25 @@ fun <N, A> StochasticGame<N, A>.weightedRandomSelection(
     val pmf = weights.associate { it.first to it.second / sum }
     val result = FiniteDistribution(pmf).sample(random)
     return result
+}
+
+/**
+ * Deterministic round-robin selection.
+ */
+fun <N, A> roundRobinSelection(
+    chooseRoundRobinNext: A.() -> N
+) = fun StochasticGame<N, A>.(
+    currNode: N,
+    L: Map<N, Double>,
+    U: Map<N, Double>,
+    goal: Goal,
+): N {
+    val O = if (goal == Goal.MAX) U else L
+    val actionVals = getAvailableActions(currNode).associateWith {
+        getResult(currNode, it).expectedValue { O.getValue(it) }
+    }
+    val bestValue = goal.select(actionVals.values)
+    val bests = actionVals.filterValues { it == bestValue }.map { it.key }
+    val best = bests[random.nextInt(bests.size)]
+    return best.chooseRoundRobinNext()
 }

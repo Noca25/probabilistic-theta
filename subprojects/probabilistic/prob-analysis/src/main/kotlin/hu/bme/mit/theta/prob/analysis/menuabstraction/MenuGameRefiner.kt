@@ -131,7 +131,7 @@ class MenuGameRefiner<S: ExprState, A: StmtAction, P: Prec, R: Refutation>(
                 is AbstractionDecision -> {
                     newPrec = abstractionDecision.result.support.map {
                         (action, nextState) ->
-                        WpState.of(nextState.toExpr()).wp(SequenceStmt.of(action.stmts)).expr
+                        WpState.of(nextState.toExpr()).wep(SequenceStmt.of(action.stmts)).expr
                     }.fold(newPrec) { p, expr -> p.extend(expr) }
                 }
                 is ChosenCommand -> throw RuntimeException("WTF")

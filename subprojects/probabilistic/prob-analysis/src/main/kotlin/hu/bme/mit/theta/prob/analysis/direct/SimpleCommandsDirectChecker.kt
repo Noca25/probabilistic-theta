@@ -10,8 +10,10 @@ import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.prob.analysis.BasicStmtAction
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
-import hu.bme.mit.theta.probabilistic.*
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
+import hu.bme.mit.theta.probabilistic.FiniteDistribution
+import hu.bme.mit.theta.probabilistic.Goal
+import hu.bme.mit.theta.probabilistic.StochasticGame
+import hu.bme.mit.theta.probabilistic.StochasticGameSolver
 import hu.bme.mit.theta.solver.Solver
 
 typealias SimpleDirectCheckerNode = DirectCheckerNode<ExplState, BasicStmtAction>
@@ -27,12 +29,7 @@ class SimpleCommandsDirectChecker(
         initValuation: Valuation,
         invar: Expr<BoolType>,
         goal: Goal,
-        solverSupplier: (
-            rewardFunction:
-            GameRewardFunction<SimpleDirectCheckerNode, FiniteDistribution<SimpleDirectCheckerNode>>,
-            initializer:
-            SGSolutionInitializer<SimpleDirectCheckerNode, FiniteDistribution<SimpleDirectCheckerNode>>
-        ) -> StochasticGameSolver<SimpleDirectCheckerNode, FiniteDistribution<SimpleDirectCheckerNode>>
+        quantSolver: StochasticGameSolver<SimpleDirectCheckerNode, FiniteDistribution<SimpleDirectCheckerNode>>
     ): Double {
         val fullPrec = ExplPrec.of(initValuation.decls.filterIsInstance<VarDecl<*>>())
         val initState = ExplState.of(initValuation)
@@ -46,7 +43,7 @@ class SimpleCommandsDirectChecker(
             initState,
             transFunc,
             fullPrec,
-            solverSupplier,
+            quantSolver,
             useQualitativePreprocessing,
             verboseLogging
         )

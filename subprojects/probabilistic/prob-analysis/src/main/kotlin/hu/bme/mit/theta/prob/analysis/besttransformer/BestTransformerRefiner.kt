@@ -19,6 +19,7 @@ import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.
 import hu.bme.mit.theta.prob.analysis.besttransformer.BestTransformerAbstractor.BestTransformerGameNode.ConcreteChoiceNode
 import hu.bme.mit.theta.solver.Solver
 import java.util.*
+import kotlin.math.abs
 
 class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refutation>(
     val solver: Solver,
@@ -55,10 +56,10 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
             val upperValue = valueFunctionMax[node]!!
             val availableActions = sg.getAvailableActions(node)
             val lowerOptimalChoices = availableActions.filter { choice ->
-                Math.abs(valueFunctionMin[sg.getResult(node, choice).support.first()]!! - lowerValue) <= tolerance
+                abs(valueFunctionMin[sg.getResult(node, choice).support.first()]!! - lowerValue) <= tolerance
             }
             val upperOptimalChoices = availableActions.filter { choice ->
-                Math.abs(valueFunctionMax[sg.getResult(node, choice).support.first()]!! - upperValue) <= tolerance
+                abs(valueFunctionMax[sg.getResult(node, choice).support.first()]!! - upperValue) <= tolerance
             }
             return if (lowerOptimalChoices == upperOptimalChoices) (listOf<BestTransformerGameAction<S, A>>() to listOf())
             else lowerOptimalChoices.minus(upperOptimalChoices) to upperOptimalChoices.minus(lowerOptimalChoices)
@@ -72,7 +73,10 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
         )
 
         if (eliminateSpurious) {
-            val trace = computeMostProbablePath(sg, pivotNode, strategyMax)
+            val trace =
+                computeMostProbablePath(sg, pivotNode, strategyMax)
+                    ?: computeMostProbablePath(sg, pivotNode, strategyMin)
+                    ?: throw RuntimeException("Selected pivot node not reachable with either strategy")
             val checkResult = traceChecker!!.check(trace)
             if (checkResult.isInfeasible) {
                 val refutation = checkResult.asInfeasible().refutation
@@ -89,11 +93,11 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
 
         val lowerChoice = sg.getResult(
             pivotNode,
-            diff.first.first()
+            diff.first.firstOrNull() ?: ((sg.getAvailableActions(pivotNode)-diff.second).first())
         ).support.first() as ConcreteChoiceNode<S, A>
         val upperChoice = sg.getResult(
             pivotNode,
-            diff.second.first()
+            diff.second.firstOrNull() ?: ((sg.getAvailableActions(pivotNode)-diff.first).first())
         ).support.first() as ConcreteChoiceNode<S, A>
 
         var newPrec = prec
@@ -107,7 +111,7 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
                 newPrec = newPrec.extend(it.command.guard)
             } else {
                 for ((action, result) in lowerChoice.commandResults[command]!!.support) {
-                    val wp = WpState.of(result.toExpr()).wp(SequenceStmt.of(action.stmts)).expr
+                    val wp = WpState.of(result.toExpr()).wep(SequenceStmt.of(action.stmts)).expr
                     newPrec = newPrec.extend(wp)
                 }
             }
@@ -134,7 +138,7 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
         sg: BestTransformerAbstractor.BestTransformerGame<S, A, *>,
         target: BestTransformerGameNode<S, A>,
         strategy: Map<BestTransformerGameNode<S, A>, BestTransformerGameAction<S, A>>
-    ): Trace<S, A> {
+    ): Trace<S, A>? {
         val p = sg.getAllNodes().associateWith { 0.0 }.toMutableMap()
         p[target] = 1.0
         val changed: Queue<BestTransformerGameNode<S, A>> = ArrayDeque()
@@ -154,7 +158,7 @@ class BestTransformerRefiner<S : ExprState, A : StmtAction, P : Prec, R : Refuta
                 }
             }
         }
-        if(p[sg.initialNode] == 0.0) TODO("The chosen pivot node is not reachable with this strategy")
+        if(p[sg.initialNode] == 0.0) return null
         val states = arrayListOf<S>()
         val actions = arrayListOf<A>()
         var curr = sg.initialNode

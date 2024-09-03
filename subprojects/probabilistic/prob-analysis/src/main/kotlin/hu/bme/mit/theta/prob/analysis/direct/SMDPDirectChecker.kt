@@ -8,10 +8,8 @@ import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
-import hu.bme.mit.theta.probabilistic.GameRewardFunction
 import hu.bme.mit.theta.probabilistic.StochasticGame
 import hu.bme.mit.theta.probabilistic.StochasticGameSolver
-import hu.bme.mit.theta.probabilistic.gamesolvers.SGSolutionInitializer
 import hu.bme.mit.theta.solver.Solver
 
 typealias SMDPDirectCheckerNode = DirectCheckerNode<SMDPState<ExplState>, SMDPCommandAction>
@@ -24,12 +22,7 @@ class SMDPDirectChecker(
     fun check(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask,
-        solverSupplier: (
-            rewardFunction:
-            GameRewardFunction<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>,
-            initializer:
-            SGSolutionInitializer<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
-        ) -> StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
+        quantSolver: StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
     ): Double {
         val initFunc = SmdpInitFunc<ExplState, ExplPrec>(
             ExplInitFunc.create(solver, smdp.getFullInitExpr()),
@@ -53,7 +46,7 @@ class SMDPDirectChecker(
             initStates.first(),
             transFunc,
             fullPrec,
-            solverSupplier,
+            quantSolver,
             useQualitativePreprocessing,
             verboseLogging
         )

@@ -9,7 +9,7 @@ data class TestInput(
 /**
  * A simple tree-like stochastic game with strictly alternating players (except for absorbing states).
  */
-fun treeGame(): TestInput {
+fun treeGame(addSelfLoops: Boolean = false): TestInput {
     val builder = ExplicitStochasticGame.Builder()
     val a = builder.addNode("a", 0)
     builder.setInitNode(a)
@@ -44,7 +44,7 @@ fun treeGame(): TestInput {
     builder.addEdge(d21, FiniteDistribution(e211 to 0.3, e212 to 0.7))
     builder.addEdge(d22, FiniteDistribution(e221 to 0.4, e222 to 0.6))
 
-    builder.addSelfLoops()
+    if(addSelfLoops) builder.addSelfLoops()
 
     val (game, mapping) = builder.build()
     val targets = listOf(e112, e122, e212, e222).mapNotNull(mapping::get)
@@ -63,7 +63,7 @@ fun treeGame(): TestInput {
  * In each node of the ring, the owner can decide to go on in the ring surely, or exit to an absorbing state
  * with 0.9 probability. Each "outer" node is either a target, or a non-target absorbing state.
  */
-fun ringGame(): TestInput {
+fun ringGame(addSelfLoops: Boolean = false): TestInput {
     val builder = ExplicitStochasticGame.Builder()
     val ringNodes = arrayListOf<ExplicitStochasticGame.Builder.Node>()
     val outerNodes = arrayListOf<ExplicitStochasticGame.Builder.Node>()
@@ -83,7 +83,7 @@ fun ringGame(): TestInput {
         builder.addEdge(ringNodes[i], FiniteDistribution.dirac(nextRingNode))
     }
     builder.setInitNode(ringNodes.first())
-    builder.addSelfLoops()
+    if(addSelfLoops) builder.addSelfLoops()
     val targets = listOf(0, 3, 4, 5).map(outerNodes::get)
 
     val (game, mapping) = builder.build()

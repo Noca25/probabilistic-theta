@@ -4,7 +4,7 @@ import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
 import hu.bme.mit.theta.probabilistic.gamesolvers.almostSureMaxForMDP
 import hu.bme.mit.theta.probabilistic.gamesolvers.computeMECs
 import hu.bme.mit.theta.probabilistic.gamesolvers.computeSCCs
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VIComponentTest {
@@ -17,19 +17,21 @@ class VIComponentTest {
         assertEquals(listOf(setOf(0)), sccs2)
     }
 
+    @Test
+    fun mecComputationForTreeTest() {
+        val treeGame = treeGame(true)
+        val treeMecs = computeMECs(treeGame.game)
+        assertEquals(8, treeMecs.size) // Only the leaf nodes are MECs
+        assertEquals(8, treeMecs.count {it.size == 1})
+    }
 
     @Test
-    fun mecComputationTest() {
-        val ringGame = ringGame()
+    fun mecComputationForRingTest() {
+        val ringGame = ringGame(true)
         val ringMecs = computeMECs(ringGame.game)
         assertEquals(9, ringMecs.size) // Each outer node is its own MEC, and the ring itself is another one
         assertEquals(8, ringMecs.count {it.size == 1})
         assertEquals(1, ringMecs.count {it.size == 8})
-
-        val treeGame = treeGame()
-        val treeMecs = computeMECs(treeGame.game)
-        assertEquals(8, treeMecs.size) // Only the tree nodes are MECs
-        assertEquals(8, treeMecs.count {it.size == 1})
     }
 
     @Test

@@ -174,8 +174,8 @@ fun <N, A> deflate(
         else {
             val vals = actionValues(game, lowerValues, n)
             val optim = vals.values.minOrNull()
-                ?: throw Exception("No out edges on node $n - use self loops for absorbing states!")
-            game.getAvailableActions(n).filter { vals[it]!!.equals(optim, msecOptimalityThreshold) }
+            if(optim == null) listOf()
+            else game.getAvailableActions(n).filter { vals[it]!!.equals(optim, msecOptimalityThreshold) }
         }
     }
     val msecs = computeMECs(game) { optimalActions.get(it)!! }
@@ -183,6 +183,7 @@ fun <N, A> deflate(
     val strategyUpdate = hashMapOf<N, A>()
     var maxChange = 0.0
     for (msec in msecs) {
+        if(msec.size == 1 && optimalActions[msec.first()]!!.isEmpty()) continue // leave absorbing nodes alone
         val exitValues = msec.filter { goal(game.getPlayer(it)) == Goal.MAX }.associateWith { n ->
             game.getAvailableActions(n).map { act -> act to game.getResult(n, act) }
                 .filter { it.second.support.any { it !in msec } }
@@ -256,7 +257,7 @@ fun <N, A> computeMECs(
         if (!changed) return currSCCs.filter {
             // for single-node components, a self-loop must be present to be a MEC
             it.size > 1 || it.first().let { n ->
-                allowedActions(n).any { a -> game.getResult(n, a).support == hashSetOf(n) }
+                allowedActions(n).any { a -> game.getResult(n, a).support.let { it.size == 1 && it.first() == n } }
             }
         }
     }

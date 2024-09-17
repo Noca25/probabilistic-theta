@@ -5,6 +5,7 @@ import hu.bme.mit.theta.analysis.expl.ExplPrec
 import hu.bme.mit.theta.analysis.expl.ExplState
 import hu.bme.mit.theta.analysis.expl.ExplStmtTransFunc
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
+import hu.bme.mit.theta.core.type.rattype.RatLitExpr
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
@@ -19,6 +20,46 @@ class SMDPDirectChecker(
     val verboseLogging: Boolean = false,
     val useQualitativePreprocessing: Boolean = false
 ) {
+    fun check(
+        smdp: SMDP,
+        smdpExpectedRewardTask: SMDPExpectedRewardTask,
+        quantSolver: StochasticGameSolver<SMDPDirectCheckerNode, FiniteDistribution<SMDPDirectCheckerNode>>
+    ): Double {
+        val initFunc = SmdpInitFunc<ExplState, ExplPrec>(
+            ExplInitFunc.create(solver, smdp.getFullInitExpr()),
+            smdp
+        )
+        val fullPrec = ExplPrec.of(smdp.getAllVars())
+        val initStates = initFunc.getInitStates(fullPrec)
+        if(initStates.size != 1)
+            throw RuntimeException("initial state must be deterministic")
+
+        val smdpLts = SmdpCommandLts<ExplState>(smdp)
+        fun commandsWithPrecondition(state: SMDPState<ExplState>) =
+            smdpLts.getCommandsFor(state).map { it.withPrecondition(smdpExpectedRewardTask.constraint) }
+
+        val transFunc = SMDPTransFunc(ExplStmtTransFunc.create(solver, 0))
+
+        val directChecker = DirectChecker<SMDPState<ExplState>, SMDPCommandAction>(
+            ::commandsWithPrecondition,
+            this::isEnabled,
+            null,
+            { s ->
+                val ratLitExpr = smdpExpectedRewardTask.rewardExpr.eval(s.domainState) as RatLitExpr
+                ratLitExpr.num.toDouble() / ratLitExpr.denom.toDouble()
+            },
+            initStates.first(),
+            transFunc,
+            fullPrec,
+            quantSolver,
+            useQualitativePreprocessing,
+            verboseLogging
+        )
+
+        return directChecker.check(smdpExpectedRewardTask.goal)
+    }
+
+
     fun check(
         smdp: SMDP,
         smdpReachabilityTask: SMDPReachabilityTask,
@@ -43,6 +84,7 @@ class SMDPDirectChecker(
             ::commandsWithPrecondition,
             this::isEnabled,
             { s -> smdpReachabilityTask.targetExpr.eval(s.domainState) == True() },
+            null,
             initStates.first(),
             transFunc,
             fullPrec,

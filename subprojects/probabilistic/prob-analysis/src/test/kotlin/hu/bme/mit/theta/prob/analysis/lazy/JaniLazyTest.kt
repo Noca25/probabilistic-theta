@@ -2,7 +2,7 @@ package hu.bme.mit.theta.prob.analysis.lazy
 
 import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.prob.analysis.jani.SMDPProperty
-import hu.bme.mit.theta.prob.analysis.jani.extractSMDPTask
+import hu.bme.mit.theta.prob.analysis.jani.extractSMDPReachabilityTask
 import hu.bme.mit.theta.prob.analysis.jani.model.Model
 import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
 import hu.bme.mit.theta.prob.analysis.jani.toSMDP
@@ -31,14 +31,14 @@ class JaniLazyTest {
         val ucSolver = Z3SolverFactory.getInstance().createUCSolver()
         for (property in model.properties) {
             if (property is SMDPProperty.ProbabilityProperty || property is SMDPProperty.ProbabilityThresholdProperty) {
-                val task = extractSMDPTask(property)
-                if (property.name != "c2") continue
+                val task = extractSMDPReachabilityTask(property)
+                //if (property.name != "c2") continue
                 if(model.getAllVars().size < 30) {
                     ImmutableValuation.experimental = true
                     ImmutableValuation.declOrder = model.getAllVars().toTypedArray()
                 }
 
-                val usePred = true
+                val usePred = false
                 val exact = false
                 val exactError = true
                 val game = true
@@ -94,7 +94,7 @@ class JaniLazyTest {
                     for (property in model.properties) {
                         if (property is SMDPProperty.ProbabilityProperty) {
                             try {
-                                val task = extractSMDPTask(property)
+                                val task = extractSMDPReachabilityTask(property)
                                 val result = SMDPLazyChecker(
                                     solver, itpSolver, ucSolver, SMDPLazyChecker.Algorithm.BRTDP,
                                     brtdpStrategy = BRTDPStrategy.DIFF_BASED,

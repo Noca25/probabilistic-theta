@@ -176,6 +176,13 @@ data class SMDPState<D: ExprState>(
     }
 }
 
+data class SMDPExpectedRewardTask(
+    val rewardExpr: Expr<RatType>,
+    val goal: Goal,
+    val negateResult: Boolean,
+    val constraint: Expr<BoolType>
+)
+
 data class SMDPReachabilityTask(
     val targetExpr: Expr<BoolType>,
     val goal: Goal,
@@ -199,12 +206,12 @@ class SMDPCommandAction(
     }
 
     override fun getStmts() =
-        // Apply transition
+        // Reset all transient variables
+        listOf(smdp.resetTransientsStmt()) +
+        // Then apply transition
         this.destination.assignments.groupBy { it.index }.toSortedMap().map {
             SimultaneousStmt(it.value.map(SMDP.Assignment::toStmt))
         } +
-        // then reset all transient variables
-        smdp.resetTransientsStmt() +
         // then set all transient variables based on the target locations, if it gives them a value
         this.destination.locs.flatMap {
             it.transientMap.entries.map {

@@ -13,6 +13,7 @@ import hu.bme.mit.theta.core.type.abstracttype.AbstractExprs
 import hu.bme.mit.theta.core.type.abstracttype.EqExpr
 import hu.bme.mit.theta.core.type.anytype.RefExpr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs
+import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.inttype.IntExprs
@@ -24,13 +25,12 @@ import hu.bme.mit.theta.core.type.rattype.RatExprs.Rat
 import hu.bme.mit.theta.core.type.rattype.RatLitExpr
 import hu.bme.mit.theta.core.type.rattype.RatType
 import hu.bme.mit.theta.core.utils.ExprSimplifier
-import hu.bme.mit.theta.prob.analysis.jani.model.*
 import hu.bme.mit.theta.prob.analysis.jani.SMDP.ActionLabel.StandardActionLabel
 import hu.bme.mit.theta.prob.analysis.jani.SMDPPathFormula.Quantifier.EXISTS
 import hu.bme.mit.theta.prob.analysis.jani.SMDPPathFormula.Quantifier.FORALL
 import hu.bme.mit.theta.prob.analysis.jani.SMDPProperty.*
+import hu.bme.mit.theta.prob.analysis.jani.model.*
 import hu.bme.mit.theta.probabilistic.Goal
-import kotlin.math.exp
 import hu.bme.mit.theta.prob.analysis.jani.model.BoolType as JaniBoolType
 import hu.bme.mit.theta.prob.analysis.jani.model.IntType as JaniIntType
 import hu.bme.mit.theta.prob.analysis.jani.model.RealType as JaniRealType
@@ -39,8 +39,8 @@ sealed class SMDPProperty(
     val name: String
 ) {
     class ProbabilityProperty(name: String, val optimType: Goal, val pathFormula: SMDPPathFormula) : SMDPProperty(name)
-    class ExpectationProperty(name: String, val optimType: Goal, val expr: Expr<IntType>) : SMDPProperty(name)
-    class SteadyStateProperty(name: String, val optimType: Goal, val expr: Expr<IntType>) : SMDPProperty(name)
+    class ExpectationProperty(name: String, val optimType: Goal, val rewardExpr: Expr<RatType>, val until: Expr<BoolType>) : SMDPProperty(name)
+    class SteadyStateProperty(name: String, val optimType: Goal, val rewardExpr: Expr<RatType>) : SMDPProperty(name)
     class PathQuantifierProperty(name: String, val type: SMDPPathFormula.Quantifier, val pathFormula: SMDPPathFormula) : SMDPProperty(name)
 
     enum class ComparisonOperator {
@@ -50,7 +50,7 @@ sealed class SMDPProperty(
         name: String, val optimType: Goal, val pathFormula: SMDPPathFormula, val threshold: Double, val comparison: ComparisonOperator
     ) : SMDPProperty(name)
     class ExpectationThresholdProperty(
-        name: String, val optimType: Goal, val exor: Expr<IntType>, val threshold: Double, val comparison: ComparisonOperator
+        name: String, val optimType: Goal, val rewardExpr: Expr<RatType>, val until: Expr<BoolType>, val threshold: Double, val comparison: ComparisonOperator
     ) : SMDPProperty(name)
 }
 
@@ -199,9 +199,9 @@ fun Property.toSMDPProperty(
                 ProbabilityOp.MAX ->
                     ProbabilityProperty(this.name, Goal.MAX, propExpr.exp.toThetaPathExpression(varMap, functionMap))
                 SteadyStateOp.MIN ->
-                    SteadyStateProperty(this.name, Goal.MIN, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<IntType>)
+                    SteadyStateProperty(this.name, Goal.MIN, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>)
                 SteadyStateOp.MAX ->
-                    SteadyStateProperty(this.name, Goal.MAX, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<IntType>)
+                    SteadyStateProperty(this.name, Goal.MAX, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>)
                 PathQuantifier.EXISTS ->
                     PathQuantifierProperty(this.name, EXISTS, propExpr.exp.toThetaPathExpression(varMap, functionMap))
                 PathQuantifier.FORALL ->
@@ -209,12 +209,16 @@ fun Property.toSMDPProperty(
                 else -> throw IllegalArgumentException("Property expression with operator ${propExpr.op} unsupported")
             }
         else if(propExpr is Expectation) {
-            when(propExpr.op) {
-                ExpectationOp.MIN ->
-                    ExpectationProperty(this.name, Goal.MIN, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<IntType>)
-                ExpectationOp.MAX ->
-                    ExpectationProperty(this.name, Goal.MAX, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<IntType>)
+            val optimType = when(propExpr.op) {
+                ExpectationOp.MIN -> Goal.MIN
+                ExpectationOp.MAX -> Goal.MAX
             }
+            ExpectationProperty(
+                this.name,
+                optimType,
+                propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>,
+                propExpr.reach?.let {it.toThetaExpr(varMap, functionMap) as Expr<BoolType>} ?: BoolExprs.False()
+            )
         } else if(propExpr is BinaryExpression) {
             when(propExpr.op) {
                 BinaryOp.LEQ, DerivedBinaryOp.GEQ -> {
@@ -234,7 +238,7 @@ fun Property.toSMDPProperty(
                             this.name, inner.optimType, inner.pathFormula, threshold, comparison
                         )
                         is ExpectationProperty ->  ExpectationThresholdProperty(
-                            this.name, inner.optimType, inner.expr, threshold, comparison
+                            this.name, inner.optimType, inner.rewardExpr, inner.until, threshold, comparison
                         )
                         else -> throw IllegalArgumentException()
                     }
@@ -620,7 +624,31 @@ fun FunctionParameter.toThetaVar(): VarDecl<*> = when (this.type) {
     else -> throw UnsupportedOperationException("Unknown variable type $type for variable $name")
 }
 
-fun extractSMDPTask(prop: SMDPProperty): SMDPReachabilityTask {
+fun extractSMDPExpectedRewardTask(prop: SMDPProperty): SMDPExpectedRewardTask {
+    require(prop is ExpectationProperty || prop is ExpectationThresholdProperty)
+    val optimType =
+        when (prop) {
+            is ExpectationProperty -> prop.optimType
+            is ExpectationThresholdProperty -> prop.optimType
+            else -> throw RuntimeException("Now this is unexpected")
+        }
+    val rewardExpr =
+        when (prop) {
+            is ExpectationProperty -> prop.rewardExpr
+            is ExpectationThresholdProperty -> prop.rewardExpr
+            else -> throw RuntimeException("Now this is unexpected")
+        }
+    val until =
+        when (prop) {
+            is ExpectationProperty -> prop.until
+            is ExpectationThresholdProperty -> prop.until
+            else -> throw RuntimeException("Now this is unexpected")
+        }
+
+    return SMDPExpectedRewardTask(rewardExpr, optimType, false, Not(until))
+}
+
+fun extractSMDPReachabilityTask(prop: SMDPProperty): SMDPReachabilityTask {
     require(prop is ProbabilityProperty || prop is ProbabilityThresholdProperty) {
         "Only probability properties (Pmax and Pmin) are supported yet"
     }
@@ -630,13 +658,17 @@ fun extractSMDPTask(prop: SMDPProperty): SMDPReachabilityTask {
             F p, G p, q U p, p W ff
         """.trimIndent()
     val pathFormula =
-        if(prop is ProbabilityProperty) prop.pathFormula
-        else if(prop is ProbabilityThresholdProperty) prop.pathFormula
-        else throw RuntimeException("up")
+        when (prop) {
+            is ProbabilityProperty -> prop.pathFormula
+            is ProbabilityThresholdProperty -> prop.pathFormula
+            else -> throw RuntimeException("Now this is unexpected")
+        }
     val optimType =
-        if(prop is ProbabilityProperty) prop.optimType
-        else if(prop is ProbabilityThresholdProperty) prop.optimType
-        else throw RuntimeException("up")
+        when (prop) {
+            is ProbabilityProperty -> prop.optimType
+            is ProbabilityThresholdProperty -> prop.optimType
+            else -> throw RuntimeException("Now this is unexpected")
+        }
     when (pathFormula) {
         is SMDPPathFormula.Until -> {
             val left = pathFormula.left

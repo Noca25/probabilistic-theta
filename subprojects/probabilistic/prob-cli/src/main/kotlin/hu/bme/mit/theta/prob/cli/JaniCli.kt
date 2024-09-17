@@ -152,7 +152,7 @@ class JaniCLI : CliktCommand() {
             if (prop is SMDPProperty.ProbabilityProperty || prop is SMDPProperty.ProbabilityThresholdProperty) {
                 val task =
                     try {
-                        extractSMDPTask(prop)
+                        extractSMDPReachabilityTask(prop)
                     } catch (e: UnsupportedOperationException) {
                         if(this.property != null)
                             throw RuntimeException("Error: property ${prop.name} unsupported")

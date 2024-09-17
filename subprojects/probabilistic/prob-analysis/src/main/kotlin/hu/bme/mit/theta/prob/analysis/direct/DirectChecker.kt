@@ -13,6 +13,7 @@ import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.BRTDPStrategy.*
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpandableNode
 import hu.bme.mit.theta.probabilistic.gamesolvers.ExpansionResult
+import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.ExplicitInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.MDPAlmostSureTargetInitializer
 import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.TargetSetLowerInitializer
 import java.util.*
@@ -22,7 +23,8 @@ typealias DirectCheckerNode<S, A> = DirectChecker<S, A>.DirectCheckerMDP.NodeCla
 class DirectChecker<S: State, A: StmtAction>(
     val getStdCommands: (S) -> Collection<ProbabilisticCommand<A>>,
     val isEnabled: (S, ProbabilisticCommand<A>) -> Boolean,
-    val isTarget: (S) -> Boolean,
+    _isTarget: ((S) -> Boolean)? = null,
+    _reward: ((S)-> Double)? = null,
     val initState: S,
 
     val transFunc: TransFunc<S, in A, ExplPrec>,
@@ -31,6 +33,13 @@ class DirectChecker<S: State, A: StmtAction>(
     val useQualitativePreprocessing: Boolean = false,
     val verboseLogging: Boolean = false
 ) {
+    init {
+        require(_isTarget != null || _reward != null)
+        require(_isTarget == null || _reward == null)
+    }
+    val isTarget = _isTarget ?: {false}
+    val reward = _reward ?: {0.0}
+    val checkReward = _reward != null
 
     fun check(
         goal: Goal,
@@ -40,7 +49,21 @@ class DirectChecker<S: State, A: StmtAction>(
         val game = DirectCheckerMDP()
 
         val rewardFunction =
-            TargetRewardFunction<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>> {
+            if(checkReward) object : GameRewardFunction<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>> {
+                override fun getStateReward(n: DirectCheckerNode<S, A>): Double {
+                    return 0.0
+                }
+
+                override fun getEdgeReward(
+                    source: DirectCheckerNode<S, A>,
+                    action: FiniteDistribution<DirectCheckerNode<S, A>>,
+                    target: DirectCheckerNode<S, A>
+                ): Double {
+                    return source.rewardOnExit
+                }
+
+            }
+            else TargetRewardFunction<DirectCheckerNode<S, A>, FiniteDistribution<DirectCheckerNode<S, A>>> {
                 it.isTargetNode
             }
 
@@ -55,7 +78,12 @@ class DirectChecker<S: State, A: StmtAction>(
         }
 
         val initializer =
-            if(useQualitativePreprocessing)
+            if(checkReward) {
+                ExplicitInitializer(
+                    mapOf(), mapOf(), 0.0, Double.POSITIVE_INFINITY, 1e-7, mapOf()
+                )
+            }
+            else if(useQualitativePreprocessing)
                 MDPAlmostSureTargetInitializer(game, goal, DirectCheckerNode<S, A>::isTargetNode)
             else TargetSetLowerInitializer {
                 it.isTargetNode
@@ -128,6 +156,7 @@ class DirectChecker<S: State, A: StmtAction>(
             private val outEdges = arrayListOf<FiniteDistribution<NodeClass>>()
             var expanded: Boolean = false
             var isTargetNode: Boolean = false
+            var rewardOnExit: Double = 0.0
             fun getOutgoingEdges(): List<FiniteDistribution<NodeClass>> = outEdges
             fun createEdge(target: FiniteDistribution<NodeClass>) {
                 outEdges.add(target)
@@ -170,6 +199,7 @@ class DirectChecker<S: State, A: StmtAction>(
                                     n.isTargetNode = true
                                     n.expanded = true
                                 }
+                                n.rewardOnExit = reward(n.state)
                                 n
                             }
                             newNode

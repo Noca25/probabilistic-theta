@@ -19,7 +19,7 @@ class JaniLazyTest {
 
     @Test
     fun runOne() {
-        val f = Paths.get("F:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\consensus\\consensus.2.jani")
+        val f = Paths.get("D:\\BME\\MSc4\\qcomp\\benchmarks\\mdp\\consensus\\consensus.2.jani")
         println(f.fileName)
         val model = JaniModelMapper().readValue(f.toFile(), Model::class.java).toSMDP(
             mapOf(
@@ -75,7 +75,7 @@ class JaniLazyTest {
 
     @Ignore @Test
     fun runAll() {
-        val dir2 = Paths.get("E:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp")
+        val dir2 = Paths.get("D:\\BME\\MSc4\\qcomp\\benchmarks\\mdp")
         for (d in dir2.listDirectoryEntries()) {
             if (d.isDirectory()) {
                 if (d.fileName.toString() == "blocksworld")
@@ -98,7 +98,7 @@ class JaniLazyTest {
                                 val (task, modifiedSmdp) = extractSMDPReachabilityTask(property, model)
                                 val smdp = modifiedSmdp ?: model
                                 val result = SMDPLazyChecker(
-                                    solver, itpSolver, ucSolver, SMDPLazyChecker.Algorithm.BRTDP,
+                                    solver, itpSolver, ucSolver, SMDPLazyChecker.Algorithm.OVI,
                                     brtdpStrategy = BRTDPStrategy.DIFF_BASED,
                                     useMayStandard = true,
                                     useMustStandard = false,

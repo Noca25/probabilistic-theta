@@ -52,7 +52,7 @@ class SMDPLazyChecker(
     }
 
     enum class Algorithm {
-        BRTDP, VI, BVI
+        BRTDP, VI, BVI, OVI
     }
 
     fun checkExpl(
@@ -127,6 +127,7 @@ class SMDPLazyChecker(
             BRTDP -> checker.brtdp(successorSelection, threshold)
             VI -> checker.fullyExpanded(false, threshold, extract)
             BVI -> checker.fullyExpanded(true, threshold, extract)
+            OVI -> checker.fullyExpanded(false, threshold, extract)
         }
 
         return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
@@ -205,6 +206,7 @@ class SMDPLazyChecker(
             BRTDP -> checker.brtdp(successorSelection, threshold)
             VI -> checker.fullyExpanded(false, threshold)
             BVI -> checker.fullyExpanded(true, threshold)
+            OVI -> checker.fullyExpanded(false, threshold)
         }
 
         return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult

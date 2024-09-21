@@ -75,6 +75,7 @@ class MDPAlmostSureTargetInitializer<N, A>(
     }
 
     override fun initialStrategy(): Map<N, A> {
+        return mapOf()
         if(goal == MAX) {
             TODO("starting from the targets go backwards through the almost sure reaching nodes and choose an action which surely enters ")
         } else {

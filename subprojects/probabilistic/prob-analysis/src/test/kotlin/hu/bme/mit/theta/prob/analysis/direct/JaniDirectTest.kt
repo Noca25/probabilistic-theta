@@ -8,6 +8,7 @@ import hu.bme.mit.theta.prob.analysis.jani.model.json.JaniModelMapper
 import hu.bme.mit.theta.prob.analysis.jani.toSMDP
 import hu.bme.mit.theta.probabilistic.gamesolvers.MDPBRTDPSolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.OVISolver
 import hu.bme.mit.theta.probabilistic.gamesolvers.diffBasedSelection
 import hu.bme.mit.theta.solver.z3.Z3SolverFactory
 import org.junit.Test
@@ -17,7 +18,7 @@ class JaniDirectTest {
 
     @Test
     fun runOne() {
-        val f = Paths.get("F:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\firewire\\firewire.false.jani")
+        val f = Paths.get("D:\\BME\\MSc4\\qcomp\\benchmarks\\mdp\\consensus\\consensus.2.jani")
         println(f.fileName)
         val model = JaniModelMapper().readValue(f.toFile(), Model::class.java).toSMDP(
             modelParameterStrings = mapOf(
@@ -54,17 +55,16 @@ class JaniDirectTest {
                 println("${property.name}: $directResult")
             }
             else if (property is SMDPProperty.ProbabilityProperty || property is SMDPProperty.ProbabilityThresholdProperty) {
-                val (task, modifiedSMDP) = extractSMDPReachabilityTask(property, model)
-                val smdp = modifiedSMDP ?: model
-                if (property.name !in propsToCheck) continue
+                val task = extractSMDPReachabilityTask(property)
+                if (property.name != "c2") continue
                 val directChecker = SMDPDirectChecker(
                     solver = solver,
                     verboseLogging = true,
-                    useQualitativePreprocessing = false// !useBRTDP
+                    useQualitativePreprocessing = true
                 )
                 val directResult = directChecker.check(
-                    smdp, task,
-                    quantSolver = quantSolver
+                    model, task,
+                    quantSolver = OVISolver(1e-7, 1e-7)
                 )
                 println("${property.name}: $directResult")
             }

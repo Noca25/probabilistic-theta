@@ -180,7 +180,9 @@ data class SMDPExpectedRewardTask(
     val rewardExpr: Expr<RatType>,
     val goal: Goal,
     val negateResult: Boolean,
-    val constraint: Expr<BoolType>
+    val constraint: Expr<BoolType>,
+    val accumulateOnExit: Boolean,
+    val accumulateAfterStep: Boolean
 )
 
 data class SMDPReachabilityTask(
@@ -231,7 +233,7 @@ class SmdpCommandLts<D: ExprState>(val smdp: SMDP): ProbabilisticCommandLTS<SMDP
             List<ProbabilisticCommand<SMDPCommandAction>>
             >()
 
-    private fun edgesToCommand(es: List<SMDP.Edge>): ProbabilisticCommand<SMDPCommandAction> {
+    private fun edgesToCommand(es: List<SMDP.Edge>, currState: SMDPState<*>): ProbabilisticCommand<SMDPCommandAction> {
         val fullGuard = BoolExprs.And(es.map { it.guard })
         val resolutions = es.fold(listOf<List<SMDP.Destination>>(listOf())) { acc, curr ->
             acc.flatMap { prefix ->
@@ -247,7 +249,7 @@ class SmdpCommandLts<D: ExprState>(val smdp: SMDP): ProbabilisticCommandLTS<SMDP
             SMDPCommandAction(SMDP.ComposedDestination(
                 probExpr,
                 it.flatMap { it.assignments },
-                it.map { it.loc }
+                nextLocs(currState.locs, it.map { it.loc })
             ), smdp) to prob
         }
 
@@ -265,12 +267,12 @@ class SmdpCommandLts<D: ExprState>(val smdp: SMDP): ProbabilisticCommandLTS<SMDP
                 if(available.isEmpty()) continue@syncs
                 resolutions = resolutions.flatMap { prev -> available.map { new -> prev + new } }
             }
-            res.addAll(resolutions.map { edgesToCommand(it) })
+            res.addAll(resolutions.map { edgesToCommand(it, state) })
         }
 
         val nonSyncEdges = state.locs.flatMapIndexed { idx, loc ->
             loc.outEdges.filter { it.action is InnerActionLabel }.map {
-                edgesToCommand(listOf(it))
+                edgesToCommand(listOf(it), state)
             }
         }
         res.addAll(nonSyncEdges)
@@ -311,8 +313,13 @@ class SmdpInitFunc<D: ExprState, P: Prec>(
 }
 
 fun nextLocs(currLocs: List<SMDP.Location>, dest: SMDP.ComposedDestination): List<SMDP.Location> {
+    return nextLocs(currLocs, dest.locs)
+}
+
+
+fun nextLocs(currLocs: List<SMDP.Location>, destLocs: List<SMDP.Location>): List<SMDP.Location> {
     val res = ArrayList(currLocs)
-    for (loc in dest.locs) {
+    for (loc in destLocs) {
         var i = -1
         for (currLoc in res) {
             i++

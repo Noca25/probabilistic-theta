@@ -41,6 +41,8 @@ class SimpleCommandsDirectChecker(
             this::isEnabled,
             { s -> invar.eval(s) == BoolExprs.False() },
             null,
+            false,
+            false,
             initState,
             transFunc,
             fullPrec,

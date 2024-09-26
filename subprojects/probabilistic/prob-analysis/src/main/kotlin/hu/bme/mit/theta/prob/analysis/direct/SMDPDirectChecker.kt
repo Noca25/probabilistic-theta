@@ -48,6 +48,8 @@ class SMDPDirectChecker(
                 val ratLitExpr = smdpExpectedRewardTask.rewardExpr.eval(s.domainState) as RatLitExpr
                 ratLitExpr.num.toDouble() / ratLitExpr.denom.toDouble()
             },
+            smdpExpectedRewardTask.accumulateOnExit,
+            smdpExpectedRewardTask.accumulateAfterStep,
             initStates.first(),
             transFunc,
             fullPrec,
@@ -85,6 +87,8 @@ class SMDPDirectChecker(
             this::isEnabled,
             { s -> smdpReachabilityTask.targetExpr.eval(s.domainState) == True() },
             null,
+            false,
+            false,
             initStates.first(),
             transFunc,
             fullPrec,

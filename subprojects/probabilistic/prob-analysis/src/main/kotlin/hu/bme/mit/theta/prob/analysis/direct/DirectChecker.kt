@@ -25,6 +25,8 @@ class DirectChecker<S: State, A: StmtAction>(
     val isEnabled: (S, ProbabilisticCommand<A>) -> Boolean,
     _isTarget: ((S) -> Boolean)? = null,
     _reward: ((S)-> Double)? = null,
+    val accumulateRewardOnExit: Boolean = false,
+    val accumulateRewardAfterStep: Boolean = false,
     val initState: S,
 
     val transFunc: TransFunc<S, in A, ExplPrec>,
@@ -36,6 +38,7 @@ class DirectChecker<S: State, A: StmtAction>(
     init {
         require(_isTarget != null || _reward != null)
         require(_isTarget == null || _reward == null)
+        require(_reward == null || accumulateRewardOnExit || accumulateRewardAfterStep)
     }
     val isTarget = _isTarget ?: {false}
     val reward = _reward ?: {0.0}
@@ -59,7 +62,9 @@ class DirectChecker<S: State, A: StmtAction>(
                     action: FiniteDistribution<DirectCheckerNode<S, A>>,
                     target: DirectCheckerNode<S, A>
                 ): Double {
-                    return source.rewardOnExit
+                    val onExit = if(accumulateRewardOnExit) source.rewardOnExit else 0.0
+                    val afterStep = if(accumulateRewardAfterStep) target.rewardOnExit else 0.0
+                    return onExit + afterStep
                 }
 
             }
@@ -116,6 +121,10 @@ class DirectChecker<S: State, A: StmtAction>(
     
     inner class DirectCheckerMDP : StochasticGame<DirectCheckerMDP.NodeClass, FiniteDistribution<DirectCheckerNode<S, A>>> {
         val initNode = NodeClass(initState)
+        init {
+            initNode.isTargetNode = isTarget(initState)
+            initNode.rewardOnExit = reward(initState)
+        }
         val waitlist: Queue<NodeClass> = ArrayDeque<NodeClass>().apply { add(initNode) }
         val reachedSet = hashMapOf(initState to initNode)
 

@@ -39,7 +39,11 @@ sealed class SMDPProperty(
     val name: String
 ) {
     class ProbabilityProperty(name: String, val optimType: Goal, val pathFormula: SMDPPathFormula) : SMDPProperty(name)
-    class ExpectationProperty(name: String, val optimType: Goal, val rewardExpr: Expr<RatType>, val until: Expr<BoolType>) : SMDPProperty(name)
+    class ExpectationProperty(
+        name: String, val optimType: Goal, val rewardExpr: Expr<RatType>, val until: Expr<BoolType>,
+        val accumulateRewardOnExit: Boolean, val accumulateRewardAfterStep: Boolean
+    ) : SMDPProperty(name)
+    // TODO: accumulation?
     class SteadyStateProperty(name: String, val optimType: Goal, val rewardExpr: Expr<RatType>) : SMDPProperty(name)
     class PathQuantifierProperty(name: String, val type: SMDPPathFormula.Quantifier, val pathFormula: SMDPPathFormula) : SMDPProperty(name)
 
@@ -50,7 +54,11 @@ sealed class SMDPProperty(
         name: String, val optimType: Goal, val pathFormula: SMDPPathFormula, val threshold: Double, val comparison: ComparisonOperator
     ) : SMDPProperty(name)
     class ExpectationThresholdProperty(
-        name: String, val optimType: Goal, val rewardExpr: Expr<RatType>, val until: Expr<BoolType>, val threshold: Double, val comparison: ComparisonOperator
+        name: String,
+        val optimType: Goal, val rewardExpr: Expr<RatType>,
+        val until: Expr<BoolType>,
+        val accumulateRewardOnExit: Boolean, val accumulateRewardAfterStep: Boolean,
+        val threshold: Double, val comparison: ComparisonOperator
     ) : SMDPProperty(name)
 }
 
@@ -199,7 +207,8 @@ fun Property.toSMDPProperty(
                 ProbabilityOp.MAX ->
                     ProbabilityProperty(this.name, Goal.MAX, propExpr.exp.toThetaPathExpression(varMap, functionMap))
                 SteadyStateOp.MIN ->
-                    SteadyStateProperty(this.name, Goal.MIN, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>)
+                    SteadyStateProperty(
+                        this.name, Goal.MIN, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>)
                 SteadyStateOp.MAX ->
                     SteadyStateProperty(this.name, Goal.MAX, propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>)
                 PathQuantifier.EXISTS ->
@@ -217,7 +226,9 @@ fun Property.toSMDPProperty(
                 this.name,
                 optimType,
                 propExpr.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>,
-                propExpr.reach?.let {it.toThetaExpr(varMap, functionMap) as Expr<BoolType>} ?: BoolExprs.False()
+                propExpr.reach?.let {it.toThetaExpr(varMap, functionMap) as Expr<BoolType>} ?: BoolExprs.False(),
+                RewardAccumulation.EXIT in propExpr.accumulate,
+                RewardAccumulation.STEPS in propExpr.accumulate
             )
         } else if(propExpr is BinaryExpression) {
             when(propExpr.op) {
@@ -238,7 +249,9 @@ fun Property.toSMDPProperty(
                             this.name, inner.optimType, inner.pathFormula, threshold, comparison
                         )
                         is ExpectationProperty ->  ExpectationThresholdProperty(
-                            this.name, inner.optimType, inner.rewardExpr, inner.until, threshold, comparison
+                            this.name, inner.optimType, inner.rewardExpr, inner.until,
+                            inner.accumulateRewardOnExit, inner.accumulateRewardAfterStep,
+                            threshold, comparison,
                         )
                         else -> throw IllegalArgumentException()
                     }
@@ -644,8 +657,27 @@ fun extractSMDPExpectedRewardTask(prop: SMDPProperty): SMDPExpectedRewardTask {
             is ExpectationThresholdProperty -> prop.until
             else -> throw RuntimeException("Now this is unexpected")
         }
+    val accumulateRewardOnExit =
+        when (prop) {
+            is ExpectationProperty -> prop.accumulateRewardOnExit
+            is ExpectationThresholdProperty -> prop.accumulateRewardOnExit
+            else -> throw RuntimeException("Now this is unexpected")
+        }
+    val accumulateRewardAfterStep =
+        when (prop) {
+            is ExpectationProperty -> prop.accumulateRewardAfterStep
+            is ExpectationThresholdProperty -> prop.accumulateRewardAfterStep
+            else -> throw RuntimeException("Now this is unexpected")
+        }
 
-    return SMDPExpectedRewardTask(rewardExpr, optimType, false, Not(until))
+    return SMDPExpectedRewardTask(
+        rewardExpr,
+        optimType,
+        false,
+        Not(until),
+        accumulateRewardOnExit,
+        accumulateRewardAfterStep
+    )
 }
 
 fun extractSMDPReachabilityTask(prop: SMDPProperty): SMDPReachabilityTask {

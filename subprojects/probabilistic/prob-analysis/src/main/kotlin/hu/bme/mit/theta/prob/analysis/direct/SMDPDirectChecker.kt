@@ -78,7 +78,13 @@ class SMDPDirectChecker(
 
         val smdpLts = SmdpCommandLts<ExplState>(smdp)
         fun commandsWithPrecondition(state: SMDPState<ExplState>) =
-            smdpLts.getCommandsFor(state).map { it.withPrecondition(smdpReachabilityTask.constraint) }
+            smdpLts.getCommandsFor(state).map {
+                it.withPrecondition(smdpReachabilityTask.constraint)
+                    .extendWith(
+                        smdpReachabilityTask.preStepAdditions,
+                        smdpReachabilityTask.postStepAdditions
+                    )
+            }
 
         val transFunc = SMDPTransFunc(ExplStmtTransFunc.create(solver, 0))
 

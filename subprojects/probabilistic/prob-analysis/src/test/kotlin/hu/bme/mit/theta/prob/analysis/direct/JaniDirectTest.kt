@@ -17,9 +17,6 @@ class JaniDirectTest {
 
     @Test
     fun runOne() {
-        // Incorrect results:
-        // eajs ProbUtil
-        // firewire.false deadline
         val f = Paths.get("F:\\egyetem\\dipterv\\qcomp\\benchmarks\\mdp\\firewire\\firewire.false.jani")
         println(f.fileName)
         val model = JaniModelMapper().readValue(f.toFile(), Model::class.java).toSMDP(
@@ -28,9 +25,19 @@ class JaniDirectTest {
                 "energy_capacity" to "100", "B" to "5"
             )
         )
-        val propsToCheck = model.properties.map { it.name }
+        val propsToCheck = listOf("deadline") //model.properties.map { it.name }
         val solver = Z3SolverFactory.getInstance().createSolver()
         val useBRTDP = false
+        val quantSolver = if (useBRTDP)
+            MDPBRTDPSolver(
+                SMDPDirectCheckerGame::diffBasedSelection,
+                1e-7,
+                true,
+                MDPBRTDPSolver.UpdateStrategy.DYNAMIC
+            ) { iteration, reachedSet, linit, uinit ->
+                println("$iteration: ${reachedSet.size} [$linit, $uinit]")
+            } else VISolver(1e-7)
+
         for (property in model.properties) {
             if(property is SMDPProperty.ExpectationProperty) {
                 val task = extractSMDPExpectedRewardTask(property)
@@ -42,37 +49,22 @@ class JaniDirectTest {
                 )
                 val directResult = directChecker.check(
                     model, task,
-                    quantSolver = if (useBRTDP)
-                        MDPBRTDPSolver(
-                            SMDPDirectCheckerGame::diffBasedSelection,
-                            1e-7,
-                            true,
-                            MDPBRTDPSolver.UpdateStrategy.DYNAMIC
-                        ) { iteration, reachedSet, linit, uinit ->
-                            println("$iteration: ${reachedSet.size} [$linit, $uinit]")
-                        } else VISolver(1e-7)
+                    quantSolver = quantSolver
                 )
                 println("${property.name}: $directResult")
             }
             else if (property is SMDPProperty.ProbabilityProperty || property is SMDPProperty.ProbabilityThresholdProperty) {
-                val task = extractSMDPReachabilityTask(property)
+                val (task, modifiedSMDP) = extractSMDPReachabilityTask(property, model)
+                val smdp = modifiedSMDP ?: model
                 if (property.name !in propsToCheck) continue
                 val directChecker = SMDPDirectChecker(
                     solver = solver,
                     verboseLogging = true,
-                    useQualitativePreprocessing = !useBRTDP
+                    useQualitativePreprocessing = false// !useBRTDP
                 )
                 val directResult = directChecker.check(
-                    model, task,
-                    quantSolver = if (useBRTDP)
-                        MDPBRTDPSolver(
-                            SMDPDirectCheckerGame::diffBasedSelection,
-                            1e-7,
-                            true,
-                            MDPBRTDPSolver.UpdateStrategy.DYNAMIC
-                        ) { iteration, reachedSet, linit, uinit ->
-                            println("$iteration: ${reachedSet.size} [$linit, $uinit]")
-                        } else VISolver(1e-7)
+                    smdp, task,
+                    quantSolver = quantSolver
                 )
                 println("${property.name}: $directResult")
             }

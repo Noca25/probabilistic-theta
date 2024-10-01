@@ -31,18 +31,19 @@ class JaniLazyTest {
         val ucSolver = Z3SolverFactory.getInstance().createUCSolver()
         for (property in model.properties) {
             if (property is SMDPProperty.ProbabilityProperty || property is SMDPProperty.ProbabilityThresholdProperty) {
-                val task = extractSMDPReachabilityTask(property)
+                val (task, modifiedSmdp) = extractSMDPReachabilityTask(property)
+                val smdp = modifiedSmdp ?: model
                 //if (property.name != "c2") continue
-                if(model.getAllVars().size < 30) {
+                if(smdp.getAllVars().size < 30) {
                     ImmutableValuation.experimental = true
-                    ImmutableValuation.declOrder = model.getAllVars().toTypedArray()
+                    ImmutableValuation.declOrder = smdp.getAllVars().toTypedArray()
                 }
 
-                val usePred = false
-                val exact = false
+                val usePred = true
+                val exact = true
                 val exactError = true
-                val game = true
-                val merge = false
+                val game = false
+                val merge = true
                 val algorithm = SMDPLazyChecker.Algorithm.BRTDP
                 val useQualitativePreprocessing = true
 
@@ -56,14 +57,14 @@ class JaniLazyTest {
                     useMustStandard = exact,
                     useMayTarget =  exactError || exact || task.goal == Goal.MAX,
                     useMustTarget = exactError || exact || task.goal == Goal.MIN,
-                    useSeq = true,
+                    useSeq = usePred,
                     useGameRefinement = game,
                     brtdpStrategy = BRTDPStrategy.DIFF_BASED,
                     useQualitativePreprocessing = useQualitativePreprocessing,
                     mergeSameSCNodes = merge
                 ).let {
-                    if (usePred) it.checkPred(model, task)
-                    else it.checkExpl(model, task)
+                    if (usePred) it.checkPred(smdp, task)
+                    else it.checkExpl(smdp, task)
                 }
                 println("${property.name}: $result")
             } else {
@@ -94,7 +95,8 @@ class JaniLazyTest {
                     for (property in model.properties) {
                         if (property is SMDPProperty.ProbabilityProperty) {
                             try {
-                                val task = extractSMDPReachabilityTask(property)
+                                val (task, modifiedSmdp) = extractSMDPReachabilityTask(property, model)
+                                val smdp = modifiedSmdp ?: model
                                 val result = SMDPLazyChecker(
                                     solver, itpSolver, ucSolver, SMDPLazyChecker.Algorithm.BRTDP,
                                     brtdpStrategy = BRTDPStrategy.DIFF_BASED,
@@ -102,7 +104,7 @@ class JaniLazyTest {
                                     useMustStandard = false,
                                     useMayTarget = true,
                                     useMustTarget = false,
-                                ).checkExpl(model, task,)
+                                ).checkExpl(smdp, task)
                                 println("${property.name}: $result")
                             } catch (e: IllegalArgumentException) {
                                 println(e.message)

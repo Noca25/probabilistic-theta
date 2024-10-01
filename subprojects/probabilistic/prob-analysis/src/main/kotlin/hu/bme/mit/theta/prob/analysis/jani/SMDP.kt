@@ -189,12 +189,16 @@ data class SMDPReachabilityTask(
     val targetExpr: Expr<BoolType>,
     val goal: Goal,
     val negateResult: Boolean,
-    val constraint: Expr<BoolType>
+    val constraint: Expr<BoolType>,
+    val preStepAdditions: List<Stmt>,
+    val postStepAdditions: List<Stmt>
 )
 
 class SMDPCommandAction(
     val destination: SMDP.ComposedDestination,
-    val smdp: SMDP
+    val smdp: SMDP,
+    val preActionStmts: List<Stmt> = listOf(),
+    val postActionStmts: List<Stmt> = listOf()
 ) : StmtAction() {
     companion object {
         fun skipAt(locs: List<SMDP.Location>, smdp: SMDP) =
@@ -208,12 +212,13 @@ class SMDPCommandAction(
     }
 
     override fun getStmts() =
+        preActionStmts +
         // Reset all transient variables
         listOf(smdp.resetTransientsStmt()) +
         // Then apply transition
         this.destination.assignments.groupBy { it.index }.toSortedMap().map {
             SimultaneousStmt(it.value.map(SMDP.Assignment::toStmt))
-        } +
+        } + postActionStmts +
         // then set all transient variables based on the target locations, if it gives them a value
         this.destination.locs.flatMap {
             it.transientMap.entries.map {
@@ -224,7 +229,25 @@ class SMDPCommandAction(
     override fun toString(): String {
         return stmts.toString()
     }
+
+    fun extendWith(
+        newPreActionStmts: List<Stmt>,
+        newPostActionStmts: List<Stmt>
+    ) = SMDPCommandAction(
+        destination, smdp,
+        newPreActionStmts+this.preActionStmts,
+        this.postActionStmts+newPostActionStmts
+    )
 }
+
+fun ProbabilisticCommand<SMDPCommandAction>.extendWith(
+    newPreActionStmts: List<Stmt>,
+    newPostActionStmts: List<Stmt>
+) = ProbabilisticCommand<SMDPCommandAction>(
+    this.guard, this.result.transform {
+        it.extendWith(newPreActionStmts, newPostActionStmts)
+    }
+)
 
 
 class SmdpCommandLts<D: ExprState>(val smdp: SMDP): ProbabilisticCommandLTS<SMDPState<D>, SMDPCommandAction> {

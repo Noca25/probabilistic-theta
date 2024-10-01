@@ -6,6 +6,8 @@ import hu.bme.mit.theta.core.decl.VarDecl
 import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.core.model.ImmutableValuation.empty
 import hu.bme.mit.theta.core.model.Valuation
+import hu.bme.mit.theta.core.stmt.Stmt
+import hu.bme.mit.theta.core.stmt.Stmts
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.LitExpr
 import hu.bme.mit.theta.core.type.Type
@@ -16,6 +18,7 @@ import hu.bme.mit.theta.core.type.booltype.BoolExprs
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
 import hu.bme.mit.theta.core.type.booltype.BoolType
+import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
 import hu.bme.mit.theta.core.type.inttype.IntExprs
 import hu.bme.mit.theta.core.type.inttype.IntExprs.Int
 import hu.bme.mit.theta.core.type.inttype.IntLitExpr
@@ -62,16 +65,26 @@ sealed class SMDPProperty(
     ) : SMDPProperty(name)
 }
 
+data class ThetaRewardBound(
+    val rewardExpr: Expr<RatType>,
+    val accumulateRewardOnExit: Boolean,
+    val accumulateRewardAfterStep: Boolean,
+    val lowerBound: Expr<RatType>?,
+    val lowerExclusive: Boolean,
+    val upperBound: Expr<RatType>?,
+    val upperExclusive: Boolean
+)
+
 sealed class SMDPPathFormula() {
     enum class Quantifier() {
         EXISTS, FORALL
     }
 
-    class Until(val left: SMDPPathFormula, val right: SMDPPathFormula): SMDPPathFormula()
-    class WeakUntil(val left: SMDPPathFormula, val right: SMDPPathFormula): SMDPPathFormula()
-    class Release(val left: SMDPPathFormula, val right: SMDPPathFormula): SMDPPathFormula()
-    class Globally(val inner: SMDPPathFormula): SMDPPathFormula()
-    class Eventually(val inner: SMDPPathFormula): SMDPPathFormula()
+    class Until(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
+    class WeakUntil(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
+    class Release(val left: SMDPPathFormula, val right: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
+    class Globally(val inner: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
+    class Eventually(val inner: SMDPPathFormula, val rewardBounds: Collection<ThetaRewardBound>): SMDPPathFormula()
     class StateFormula(val expr: Expr<BoolType>): SMDPPathFormula()
 }
 
@@ -301,18 +314,40 @@ fun Expression.toThetaPathExpression(varMap: Map<String, VarDecl<*>>, functionMa
     is BinaryPathExpression -> {
         val left = this.left.toThetaPathExpression(varMap, functionMap)
         val right = this.right.toThetaPathExpression(varMap, functionMap)
+        val rewardBounds = this.rewardBounds.map {
+            ThetaRewardBound(
+                it.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>,
+                RewardAccumulation.EXIT in it.accumulate,
+                RewardAccumulation.STEPS in it.accumulate,
+                it.bounds.lower?.toThetaExpr(varMap, functionMap) as Expr<RatType>?,
+                it.bounds.lowerExclusive,
+                it.bounds.upper?.toThetaExpr(varMap, functionMap) as Expr<RatType>?,
+                it.bounds.upperExclusive,
+            )
+        }
         when(this.op) {
-            BinaryPathOp.U -> SMDPPathFormula.Until(left, right)
-            BinaryPathOp.W -> SMDPPathFormula.WeakUntil(left, right)
-            DerivedBinaryPathOp.R -> SMDPPathFormula.Release(left, right)
+            BinaryPathOp.U -> SMDPPathFormula.Until(left, right, rewardBounds)
+            BinaryPathOp.W -> SMDPPathFormula.WeakUntil(left, right, rewardBounds)
+            DerivedBinaryPathOp.R -> SMDPPathFormula.Release(left, right, rewardBounds)
             else -> throw UnsupportedOperationException("Unsupported path operator in $this")
         }
     }
     is UnaryPathExpression -> {
         val inner = this.exp.toThetaPathExpression(varMap, functionMap)
+        val rewardBounds = this.rewardBounds.map {
+            ThetaRewardBound(
+                it.exp.toThetaExpr(varMap, functionMap) as Expr<RatType>,
+                RewardAccumulation.EXIT in it.accumulate,
+                RewardAccumulation.STEPS in it.accumulate,
+                it.bounds.lower?.toThetaExpr(varMap, functionMap) as Expr<RatType>?,
+                it.bounds.lowerExclusive,
+                it.bounds.upper?.toThetaExpr(varMap, functionMap) as Expr<RatType>?,
+                it.bounds.upperExclusive,
+            )
+        }
         when(this.op) {
-            UnaryPathOp.F -> SMDPPathFormula.Eventually(inner)
-            UnaryPathOp.G -> SMDPPathFormula.Globally(inner)
+            UnaryPathOp.F -> SMDPPathFormula.Eventually(inner, rewardBounds)
+            UnaryPathOp.G -> SMDPPathFormula.Globally(inner, rewardBounds)
         }
     }
     is Call -> {
@@ -498,7 +533,7 @@ fun UnaryExpression.toThetaExpr(varMap: Map<String, VarDecl<*>>, functionMap: Ma
         is UnaryOp ->
             when(this.op) {
                 UnaryOp.NOT ->
-                    if(arg.type is BoolType) BoolExprs.Not(arg as Expr<BoolType>)
+                    if(arg.type is BoolType) Not(arg as Expr<BoolType>)
                     else throw RuntimeException("Argument of NOT must be boolean")
                 UnaryOp.FLOOR ->
                     when (arg.type) {
@@ -680,7 +715,10 @@ fun extractSMDPExpectedRewardTask(prop: SMDPProperty): SMDPExpectedRewardTask {
     )
 }
 
-fun extractSMDPReachabilityTask(prop: SMDPProperty): SMDPReachabilityTask {
+fun extractSMDPReachabilityTask(
+    prop: SMDPProperty,
+    smdp: SMDP? = null
+): Pair<SMDPReachabilityTask, SMDP?> {
     require(prop is ProbabilityProperty || prop is ProbabilityThresholdProperty) {
         "Only probability properties (Pmax and Pmin) are supported yet"
     }
@@ -701,12 +739,73 @@ fun extractSMDPReachabilityTask(prop: SMDPProperty): SMDPReachabilityTask {
             is ProbabilityThresholdProperty -> prop.optimType
             else -> throw RuntimeException("Now this is unexpected")
         }
+
+    data class RewardBoundAdditions(
+        val upperBoundExprs: List<Expr<BoolType>>,
+        val lowerBoundExprs: List<Expr<BoolType>>,
+        val preStepAdditions: List<Stmt>,
+        val postStepAdditions: List<Stmt>,
+        val additionalVars: List<VarDecl<*>>,
+        val additionalInitExprs: List<Expr<BoolType>>
+    )
+    fun processRewardBounds(rewardBounds: Collection<ThetaRewardBound>): RewardBoundAdditions {
+        val upperBoundExprs = arrayListOf<Expr<BoolType>>()
+        val lowerBoundExprs = arrayListOf<Expr<BoolType>>()
+        val preStepAdditions = arrayListOf<Stmt>()
+        val postStepAdditions = arrayListOf<Stmt>()
+        val additionalVars = arrayListOf<VarDecl<*>>()
+        val additionalInitExprs = arrayListOf<Expr<BoolType>>()
+        var i = 0
+        for (rewardBound in rewardBounds) {
+            val decl = Var("__rewardbound_${i++}", Rat())
+            additionalVars.add(decl)
+            additionalInitExprs.add(RatExprs.Eq(decl.ref, Rat(0, 1)))
+            val lower = if(rewardBound.lowerBound != null) {
+                if(rewardBound.lowerExclusive) AbstractExprs.Lt(rewardBound.lowerBound, decl.ref)
+                else AbstractExprs.Leq(rewardBound.lowerBound, decl.ref)
+            } else True()
+            lowerBoundExprs.add(lower)
+            val upper = if(rewardBound.upperBound != null) {
+                if(rewardBound.upperExclusive) AbstractExprs.Gt(rewardBound.upperBound, decl.ref)
+                else AbstractExprs.Geq(rewardBound.upperBound, decl.ref)
+            } else True()
+            upperBoundExprs.add(upper)
+            val accumulation = Stmts.Assign(decl, RatExprs.Add(decl.ref, rewardBound.rewardExpr))
+            if(rewardBound.accumulateRewardOnExit)
+                preStepAdditions.add(accumulation)
+            if(rewardBound.accumulateRewardAfterStep)
+                postStepAdditions.add(accumulation)
+        }
+        return RewardBoundAdditions(
+            upperBoundExprs, lowerBoundExprs,
+            preStepAdditions, postStepAdditions,
+            additionalVars, additionalInitExprs,
+        )
+    }
+
     when (pathFormula) {
         is SMDPPathFormula.Until -> {
             val left = pathFormula.left
             val right = pathFormula.right
+
+            require(pathFormula.rewardBounds.isEmpty() || smdp != null)
+            val rba = processRewardBounds(pathFormula.rewardBounds)
+
             if (left is SMDPPathFormula.StateFormula && right is SMDPPathFormula.StateFormula) {
-                return SMDPReachabilityTask(right.expr, optimType, false, left.expr)
+                return SMDPReachabilityTask(
+                    SmartBoolExprs.And(rba.lowerBoundExprs + rba.upperBoundExprs + right.expr),
+                    optimType, false,
+                    SmartBoolExprs.And(rba.upperBoundExprs + left.expr),
+                    rba.preStepAdditions, rba.postStepAdditions
+                ) to smdp?.let {
+                    SMDP(
+                        it.globalVars + rba.additionalVars,
+                        it.automata, it.syncVecs,
+                        it.initExprs + rba.additionalInitExprs,
+                        listOf(prop),
+                        it.transientInitialValueMap, it.constantsValuation
+                    )
+                }
             } else {
                 throw IllegalArgumentException(errorString)
             }
@@ -715,9 +814,17 @@ fun extractSMDPReachabilityTask(prop: SMDPProperty): SMDPReachabilityTask {
         is SMDPPathFormula.WeakUntil -> {
             val left = pathFormula.left
             val right = pathFormula.right
+
+            require(pathFormula.rewardBounds.isEmpty()) {"Semantics of a reward-bounded weak until are not clear yet"}
+            //require(pathFormula.rewardBounds.isEmpty() || smdp != null)
+            //val rba = processRewardBounds(pathFormula.rewardBounds)
+
             if (left is SMDPPathFormula.StateFormula && right is SMDPPathFormula.StateFormula) {
                 // not(p W q) = not(q) U not(p)
-                return SMDPReachabilityTask(BoolExprs.Not(left.expr), optimType.opposite(), true, BoolExprs.Not(right.expr))
+                // TODO: reward bounds
+                return SMDPReachabilityTask(Not(left.expr), optimType.opposite(), true, Not(right.expr),
+                    listOf(), listOf()
+                ) to null
             } else {
                 throw IllegalArgumentException(errorString)
             }
@@ -726,13 +833,20 @@ fun extractSMDPReachabilityTask(prop: SMDPProperty): SMDPReachabilityTask {
         is SMDPPathFormula.Eventually -> {
             val inner = pathFormula.inner
             if (inner !is SMDPPathFormula.StateFormula) throw IllegalArgumentException(errorString)
-            return SMDPReachabilityTask(inner.expr, optimType, false, True())
+            // TODO: reward bounds?
+            return SMDPReachabilityTask(inner.expr, optimType, false, True(), listOf(), listOf()
+            ) to null
         }
 
         is SMDPPathFormula.Globally -> {
+            require(pathFormula.rewardBounds.isEmpty()) {"Semantics of a reward-bounded globally are not clear yet"}
+            //require(pathFormula.rewardBounds.isEmpty() || smdp != null)
+            //val rba = processRewardBounds(pathFormula.rewardBounds)
+
             val inner = pathFormula.inner
             if (inner !is SMDPPathFormula.StateFormula) throw IllegalArgumentException(errorString)
-            return SMDPReachabilityTask(BoolExprs.Not(inner.expr), optimType.opposite(), true, True())
+            return SMDPReachabilityTask(Not(inner.expr), optimType.opposite(), true, True(), listOf(), listOf()
+            ) to null
         }
 
         else -> throw IllegalArgumentException(errorString)

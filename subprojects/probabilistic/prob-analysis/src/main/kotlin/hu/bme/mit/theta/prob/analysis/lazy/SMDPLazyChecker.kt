@@ -84,7 +84,13 @@ class SMDPLazyChecker(
         // the resulting deadlock state is non-rewarding iff the target command is not enabled, so when target_expr is false
 
         fun commandsWithPrecondition(state: SMDPState<ExplState>) =
-            smdpLts.getCommandsFor(state).map { it.withPrecondition(smdpReachabilityTask.constraint) }
+            smdpLts.getCommandsFor(state).map {
+                it.withPrecondition(smdpReachabilityTask.constraint)
+                    .extendWith(
+                        smdpReachabilityTask.preStepAdditions,
+                        smdpReachabilityTask.postStepAdditions
+                    )
+            }
 
         val explDomain = SMDPExplDomain(domainTransFunc, fullPrec, itpSolver)
 
@@ -162,7 +168,13 @@ class SMDPLazyChecker(
         // the resulting deadlock state is non-rewarding iff the target command is not enabled, so when target_expr is false
 
         fun commandsWithPrecondition(state: SMDPState<ExplState>) =
-            smdpLts.getCommandsFor(state).map { it.withPrecondition(smdpReachabilityTask.constraint) }
+            smdpLts.getCommandsFor(state).map {
+                it.withPrecondition(smdpReachabilityTask.constraint)
+                    .extendWith(
+                        smdpReachabilityTask.preStepAdditions,
+                        smdpReachabilityTask.postStepAdditions
+                    )
+            }
 
         val predDomain = SMDPPredDomain(domainTransFunc, fullPrec, smtSolver, itpSolver, ucSolver, false)
         val checker = ProbLazyChecker(
@@ -177,7 +189,8 @@ class SMDPLazyChecker(
             verboseLogging,
             useSeq = useSeq,
             useGameRefinement = useGameRefinement,
-            useQualitativePreprocessing = useQualitativePreprocessing
+            useQualitativePreprocessing = useQualitativePreprocessing,
+            mergeSameSCNodes = mergeSameSCNodes
         )
 
         val successorSelection = when (brtdpStrategy) {

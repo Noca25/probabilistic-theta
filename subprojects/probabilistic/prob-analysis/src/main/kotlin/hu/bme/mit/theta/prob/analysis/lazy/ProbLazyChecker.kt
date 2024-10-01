@@ -5,11 +5,13 @@ import hu.bme.mit.theta.analysis.expr.ExprState
 import hu.bme.mit.theta.analysis.expr.StmtAction
 import hu.bme.mit.theta.common.logging.ConsoleLogger
 import hu.bme.mit.theta.common.logging.Logger
+import hu.bme.mit.theta.core.model.ImmutableValuation
 import hu.bme.mit.theta.core.type.Expr
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.Not
 import hu.bme.mit.theta.core.type.booltype.BoolExprs.True
 import hu.bme.mit.theta.core.type.booltype.BoolType
 import hu.bme.mit.theta.core.type.booltype.SmartBoolExprs
+import hu.bme.mit.theta.core.utils.ExprUtils
 import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.probabilistic.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution.Companion.dirac
@@ -201,7 +203,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             val forceCovers = arrayListOf<Node>()
 
             // As only a single path to the root can be strengthened at once, we need to deal with the other parents later
-            val secondaryParentStrengthenings = arrayListOf(this to this.backEdges.drop(1))
+            val secondaryParentStrengthenings = arrayListOf<Pair<Node, List<Edge>>>()
 
             for ((i, node) in nodes.withIndex()) {
                 if (newLabels[i] == node.sa) continue
@@ -257,6 +259,7 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             for (backEdge in backEdges) {
                 val parent = backEdge.source
                 val action = backEdge.getActionFor(this)
+                // TODO: what if preImage is equivalent to True?
                 val preImage = domain.preImage(this.sa, action)
                 if (useSeq) {
                     parent.strengthenWithSeq(Not(preImage))
@@ -966,11 +969,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
                     continue
                 }
                 println("Refined node: ${maxDiffNode.id}")
-//                for (node in selectFrom.filter { it.getOutgoingEdges().any { !it.surelyEnabled }
-//                        || (it.mustBeError != it.mayBeError) }) {
-//                    refineGameNode(node, UFull)
-//                    refineGameNode(node, UFull)
-//                }
                 refineGameNode(maxDiffNode, UFull)
                 /*
                 TODO("handle the consequences of error refinement - the rewards changed in trapped," +

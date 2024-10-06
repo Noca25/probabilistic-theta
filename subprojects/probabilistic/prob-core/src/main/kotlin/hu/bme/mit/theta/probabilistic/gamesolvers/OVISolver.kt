@@ -7,7 +7,9 @@ class OVISolver<N, A>(
     val epsilon: Double,
     var tolerance: Double, //threshold
     val useGS: Boolean = true,
-    var values: MutableMap<N, Double> = mutableMapOf()
+    var values: MutableMap<N, Double> = mutableMapOf(),
+    var toleranceAdjustmentCount: Int = 0,
+    val onToleranceAdjustment: (Int) -> Unit = {}
 ) : StochasticGameSolver<N, A> {
     override fun solve(analysisTask: AnalysisTask<N, A>, initializer: SGSolutionInitializer<N, A>): Map<N, Double> {
         return solveWithStrategy(analysisTask, initializer).first
@@ -73,19 +75,31 @@ class OVISolver<N, A>(
 
             if (isAnyNewValueLessThanValue(values, upperBoundValues)) {
                 this.tolerance = err / 2
+                this.toleranceAdjustmentCount++
+                onToleranceAdjustment(this.toleranceAdjustmentCount)
                 return this.solveWithStrategy(analysisTask, initializer)
             }
 
             if (down) {
                 val resultMap = averageValues(values, upperBoundValues)
+                println("Tolerance adjusted " + toleranceAdjustmentCount + " times")
                 return resultMap to strategy
             } else if (up) {
                 this.tolerance = err / 2
+                this.toleranceAdjustmentCount++
+                onToleranceAdjustment(this.toleranceAdjustmentCount)
                 return this.solveWithStrategy(analysisTask, initializer)
             }
         }
         this.tolerance = err / 2
+        this.toleranceAdjustmentCount++
+        onToleranceAdjustment(this.toleranceAdjustmentCount)
         return this.solveWithStrategy(analysisTask, initializer)
+    }
+
+    fun adjustTolerance() {
+        toleranceAdjustmentCount++
+        onToleranceAdjustment(toleranceAdjustmentCount) // Call the provided lambda
     }
 
     fun upperBoundValues(values: Map<N, Double>, epsilon: Double): Map<N, Double> {

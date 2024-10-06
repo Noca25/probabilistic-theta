@@ -126,7 +126,9 @@ class JaniCLI : CliktCommand() {
         help = "Use interpolation to eliminate (almost-)spurious pivot nodes during game refinement." +
                 "Only used for best transformer abstraction for now."
     ).flag("--no-elim", default = false)
-
+    val epsilonOVI by option(
+        help = "OVI algorithm. Epsilon parameter for guessing the initial upper bound."
+    ).double().default(1e-6)
 
     override fun run() {
 
@@ -239,6 +241,7 @@ class JaniCLI : CliktCommand() {
                         Algorithm.BVI -> SGBVISolver(threshold)
                         Algorithm.VI -> VISolver(threshold)
                         Algorithm.BRTDP -> TODO()
+                        Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
                     },
                     eliminateSpurious,
                     traceChecker,
@@ -265,6 +268,7 @@ class JaniCLI : CliktCommand() {
                     Algorithm.BVI -> SGBVISolver(threshold)
                     Algorithm.VI -> VISolver(threshold)
                     Algorithm.BRTDP -> TODO()
+                    Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
                 },
                 eliminateSpurious,
                 traceChecker,
@@ -350,6 +354,7 @@ class JaniCLI : CliktCommand() {
                         Algorithm.BVI -> SGBVISolver(threshold)
                         Algorithm.VI -> VISolver(threshold)
                         Algorithm.BRTDP -> TODO()
+                        Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
                     },
                     ReachableMostUncertain(),
                     eliminateSpurious,
@@ -373,6 +378,7 @@ class JaniCLI : CliktCommand() {
                     Algorithm.BVI -> SGBVISolver(threshold)
                     Algorithm.VI -> VISolver(threshold)
                     Algorithm.BRTDP -> TODO()
+                    Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
                 },
                 ReachableMostUncertain(),
                 eliminateSpurious,
@@ -477,6 +483,10 @@ class JaniCLI : CliktCommand() {
                 if (verbose) {
                     if(iteration % 1000 == 0) println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
                 }
+            }
+            Algorithm.OVI -> OVISolver(epsilonOVI, threshold) { adjustmentCount ->
+
+                println("Tolerance Adjustment Count: $adjustmentCount")
             }
         }
         val result = when (domain) {

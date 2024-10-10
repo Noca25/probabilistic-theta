@@ -150,15 +150,16 @@ class JaniCLI : CliktCommand() {
             if(this.property != null && this.property != prop.name)
                 continue
             if (prop is SMDPProperty.ProbabilityProperty || prop is SMDPProperty.ProbabilityThresholdProperty) {
-                val task =
+                val (task, modifiedSMDP) =
                     try {
-                        extractSMDPReachabilityTask(prop)
+                        extractSMDPReachabilityTask(prop, model)
                     } catch (e: UnsupportedOperationException) {
                         if(this.property != null)
                             throw RuntimeException("Error: property ${prop.name} unsupported")
                         println("Error: property ${prop.name} unsupported, moving on")
                         continue
                     }
+                val smdp = modifiedSMDP ?: model
 
                 // TODO: correct config of may/must separately for standard and target commands should make approximate
                 //  MIN computation correct, but this has not been sufficiently tested yet
@@ -166,9 +167,9 @@ class JaniCLI : CliktCommand() {
                 //    throw RuntimeException("Error: Approximate computation for MIN property ${prop.name} unsupported")
 
                 val result = when(abstraction) {
-                    AbstractionMethod.LAZY, AbstractionMethod.MENU_LAZY -> lazy(solver, itpSolver, ucSolver, task, model)
-                    AbstractionMethod.MENU -> menu(solver, itpSolver, ucSolver, task, model)
-                    AbstractionMethod.BT -> bestTransformer(solver, itpSolver, ucSolver, task, model)
+                    AbstractionMethod.LAZY, AbstractionMethod.MENU_LAZY -> lazy(solver, itpSolver, ucSolver, task, smdp)
+                    AbstractionMethod.MENU -> menu(solver, itpSolver, ucSolver, task, smdp)
+                    AbstractionMethod.BT -> bestTransformer(solver, itpSolver, ucSolver, task, smdp)
                 }
                 println("result: ${prop.name}: $result")
             } else {

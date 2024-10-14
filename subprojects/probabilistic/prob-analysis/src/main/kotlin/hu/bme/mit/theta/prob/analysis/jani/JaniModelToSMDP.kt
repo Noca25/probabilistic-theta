@@ -89,7 +89,9 @@ sealed class SMDPPathFormula() {
 }
 
 fun Model.toSMDP(modelParameterStrings: Map<String, String>): SMDP {
-    require(this.type == ModelType.MDP) { "Only MDP models are supported yet. "}
+    require(this.type == ModelType.MDP || this.type == ModelType.DTMC) {
+        "Only DTMC and MDP models are supported yet. "
+    }
 
     val constantMap = this.constants.associate {
         it.name to it.toThetaVar()
@@ -405,7 +407,7 @@ fun VariableDeclaration.getThetaInitExpr(
             val lowerConstraint =
                 if (this.type.lowerBound == null) True()
                 else AbstractExprs.Leq(ref, this.type.lowerBound.toThetaExpr(varMap, functionMap))
-            BoolExprs.And(listOf(lowerConstraint, upperConstraint))
+            SmartBoolExprs.And(listOf(lowerConstraint, upperConstraint))
         } else null
     } else {
         AbstractExprs.Eq(ref, this.initialValue.toThetaExpr(varMap, functionMap))

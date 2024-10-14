@@ -154,7 +154,7 @@ class JaniCLI : CliktCommand() {
                     try {
                         extractSMDPReachabilityTask(prop, model)
                     } catch (e: UnsupportedOperationException) {
-                        if(this.property != null)
+                        if (this.property != null)
                             throw RuntimeException("Error: property ${prop.name} unsupported")
                         println("Error: property ${prop.name} unsupported, moving on")
                         continue
@@ -166,12 +166,36 @@ class JaniCLI : CliktCommand() {
                 //if (task.goal == Goal.MIN && (domain != NONE && approximation != Approximation.EXACT))
                 //    throw RuntimeException("Error: Approximate computation for MIN property ${prop.name} unsupported")
 
-                val result = when(abstraction) {
+                val result = when (abstraction) {
                     AbstractionMethod.LAZY, AbstractionMethod.MENU_LAZY -> lazy(solver, itpSolver, ucSolver, task, smdp)
                     AbstractionMethod.MENU -> menu(solver, itpSolver, ucSolver, task, smdp)
                     AbstractionMethod.BT -> bestTransformer(solver, itpSolver, ucSolver, task, smdp)
                 }
                 println("result: ${prop.name}: $result")
+            } else if(prop is SMDPProperty.ExpectationProperty && domain == NONE) {
+                val task = extractSMDPExpectedRewardTask(prop)
+                val directChecker = SMDPDirectChecker(solver, verbose, preproc)
+                val successorSelection = when (strategy) {
+                    DIFF_BASED -> SMDPDirectCheckerGame::diffBasedSelection
+                    RANDOM -> SMDPDirectCheckerGame::randomSelection
+                    ROUND_ROBIN -> TODO()
+                    WEIGHTED_RANDOM -> SMDPDirectCheckerGame::weightedRandomSelection
+                }
+                val quantSolver = when (algorithm) {
+                    Algorithm.BVI -> MDPBVISolver(threshold)
+                    Algorithm.VI -> VISolver(threshold)
+                    Algorithm.BRTDP -> MDPBRTDPSolver(
+                        successorSelection,
+                        threshold
+                    ) { iteration, reachedSet, linit, uinit ->
+                        if (verbose) {
+                            if(iteration % 1000 == 0) println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
+                        }
+                    }
+                }
+                val result = directChecker.check(model, task, quantSolver)
+
+                println("${prop.name}: $result")
             } else {
                 if(this.property != null)
                     throw RuntimeException("Error: Non-probability property ${prop.name} unsupported")

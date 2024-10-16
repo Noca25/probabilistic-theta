@@ -194,6 +194,7 @@ class JaniCLI : CliktCommand() {
                             if(iteration % 1000 == 0) println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
                         }
                     }
+                    Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
                 }
                 val result = directChecker.check(model, task, quantSolver)
 

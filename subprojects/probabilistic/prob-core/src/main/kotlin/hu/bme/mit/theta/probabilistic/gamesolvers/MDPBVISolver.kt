@@ -2,7 +2,7 @@ package hu.bme.mit.theta.probabilistic.gamesolvers
 
 import hu.bme.mit.theta.probabilistic.*
 import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.pow
 
 /**
  * Bounded Value Iteration solver for "stochastic games" with a single goal, which can be considered MDPs.
@@ -30,10 +30,8 @@ class MDPBVISolver<N, A>(
         var lCurr = mergedGameNodes.associateWith {
             max(it.reward, it.origNodes.maxOf { initializer.initialLowerBound(it) })
         }
-        var uCurr = mergedGameNodes.associateWith {
-            if(it.edges.isEmpty()) min(it.reward, it.origNodes.maxOf { initializer.initialUpperBound(it) })
-            else it.origNodes.maxOf { initializer.initialUpperBound(it) }
-        }
+        var uCurr = calculateInitialUpperBound(mergedGame, mergedRewardFunction)
+        
         val unknownNodes = mergedGameNodes.filter { uCurr[it]!! - lCurr[it]!! > threshold }.toMutableList()
 
         val strategy = hashMapOf<MergedNode<N, A>, MergedEdge<N, A>>() //TODO: initial strategy using the initializer
@@ -52,6 +50,99 @@ class MDPBVISolver<N, A>(
             nodes.associateWith { uCurr[mergedGameMap[it]!!]!! },
             liftStrategy(game, strategy)
         )
+    }
+
+    private fun calculateInitialUpperBound(mergedGame: MergedGame<N, A>, mergedRewardFunction: MergedRewardFunction<N, A>): Map<MergedNode<N, A>, Double>{
+        val nodes = mergedGame.nodes
+        val SCCs = computeSCCs(mergedGame) { node -> mergedGame.getAvailableActions(node)}
+
+        val upperBound: MutableMap<MergedNode<N, A>, Double> = mutableMapOf()
+
+        for(node in nodes){
+            var upperBoundValue = 0.0
+            if(node.edges.isNotEmpty()){
+                val reachableNodes = getReachableNodes(node)
+                for(reachableNode in reachableNodes){
+                    val expNumOfVisits = calculateExpectedNumberOfVisits(mergedGame, SCCs, reachableNode)
+                    val maxExpReward = getExpectedMaxRewardForNode(reachableNode, mergedRewardFunction)
+                    upperBoundValue += expNumOfVisits * maxExpReward
+                }
+            }
+            else{
+                upperBoundValue = node.reward
+            }
+            upperBound.put(node, upperBoundValue)
+        }
+        return upperBound
+    }
+
+    fun getReachableNodes(startNode: MergedNode<N, A>): Set<MergedNode<N, A>> {
+        val reachableNodes = mutableSetOf<MergedNode<N, A>>()
+        val visited = mutableSetOf<MergedNode<N, A>>()
+        dfs(startNode, reachableNodes, visited)
+        return reachableNodes
+    }
+
+    fun dfs(currentNode: MergedNode<N, A>, reachableNodes: MutableSet<MergedNode<N, A>>, visited: MutableSet<MergedNode<N, A>>) {
+        if (currentNode !in visited) {
+            visited.add(currentNode)
+            reachableNodes.add(currentNode)
+            for (neighbor in currentNode.edges.flatMap { edge -> edge.res.pmf.keys }) {
+                dfs(neighbor, reachableNodes, visited)
+            }
+        }
+    }
+    private fun calculateExpectedNumberOfVisits(mergedGame: MergedGame<N, A>, SCCs: List<Set<MergedNode<N, A>>>, node: MergedNode<N, A>): Double{
+        val p = calculateP(mergedGame.nodes)
+        val q = calculateQ(SCCs)
+        val sizeOfComponent = SCCs.filter { it.contains(node) }.size
+
+        val maxRecurrenceProbUpperBound = 1 - p.pow(sizeOfComponent - 1) * (1 - q)
+
+        if (maxRecurrenceProbUpperBound == 1.0) {
+            throw Exception("Division by zero")
+        } else {
+            return 1 / (1 - maxRecurrenceProbUpperBound)
+        }
+    }
+
+    private fun calculateP(nodes: List<MergedNode<N,A>>): Double {
+        return nodes.flatMap { node ->
+            node.edges.flatMap { edge ->
+                edge.res.pmf.values
+            }
+        }.minOrNull() ?:0.0
+    }
+
+    private fun calculateQ(SCCs: List<Set<MergedNode<N, A>>>): Double {
+         return SCCs.map{ scc ->
+             calculate_q_t(scc)
+         }.maxOrNull() ?: 0.0
+    }
+
+    private fun calculate_q_t(SCC: Set<MergedNode<N, A>>): Double {
+        val X_t = SCC.flatMap { node ->
+            node.edges.map { edge ->
+                val probStaysInSCC = edge.res.pmf
+                    .filter { (targetNode, probability) -> targetNode in SCC }
+                    .values.sum()
+                if(probStaysInSCC < 1) probStaysInSCC else 0.0
+            }
+        }
+        return X_t.maxOrNull() ?: 0.0
+    }
+
+    private fun getExpectedMaxRewardForNode(node: MergedNode<N, A>, rewardFunction: MergedRewardFunction<N, A>): Double{
+        // merged reward functionnel szamolni az edge.reward helyett
+        // state reward + exp act reward
+        val nodeReward = rewardFunction.getStateReward(node)
+
+        return node.edges.map{ edge ->
+            edge.res.pmf.entries.sumOf { (targetNode, probability) ->
+                val edgeReward = rewardFunction.getEdgeReward(node, edge, targetNode)
+                nodeReward + probability * edgeReward
+            }
+        }.maxOrNull() ?: nodeReward
     }
 
     private fun liftStrategy(

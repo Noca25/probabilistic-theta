@@ -1,6 +1,7 @@
 package hu.bme.mit.theta.probabilistic.gamesolvers
 
 import hu.bme.mit.theta.probabilistic.*
+import java.util.*
 import kotlin.math.max
 import kotlin.math.pow
 
@@ -12,7 +13,10 @@ class MDPBVISolver<N, A>(
     val threshold: Double
 ) : StochasticGameSolver<N, A> {
 
-    fun solveWithRange(analysisTask: AnalysisTask<N, A>, initializer: SGSolutionInitializer<N, A>): RangeSolution<N, A> {
+    fun solveWithRange(
+        analysisTask: AnalysisTask<N, A>,
+        initializer: SGSolutionInitializer<N, A>
+    ): RangeSolution<N, A> {
         require(analysisTask.discountFactor == 1.0) {
             "Discount not supported for BVI (yet?)"
         }
@@ -31,7 +35,7 @@ class MDPBVISolver<N, A>(
             max(it.reward, it.origNodes.maxOf { initializer.initialLowerBound(it) })
         }
         var uCurr = calculateInitialUpperBound(mergedGame, mergedRewardFunction)
-        
+
         val unknownNodes = mergedGameNodes.filter { uCurr[it]!! - lCurr[it]!! > threshold }.toMutableList()
 
         val strategy = hashMapOf<MergedNode<N, A>, MergedEdge<N, A>>() //TODO: initial strategy using the initializer
@@ -42,8 +46,8 @@ class MDPBVISolver<N, A>(
             uCurr = uStep.result
             strategy.putAll(uStep.strategyUpdate!!)
             // TODO: it'd be more efficient to do this during the update
-            unknownNodes.removeAll { uCurr[it]!!-lCurr[it]!! < threshold }
-        } while (uCurr[mergedInit]!!-lCurr[mergedInit]!! > threshold)
+            unknownNodes.removeAll { uCurr[it]!! - lCurr[it]!! < threshold }
+        } while (uCurr[mergedInit]!! - lCurr[mergedInit]!! > threshold)
 
         return RangeSolution(
             nodes.associateWith { lCurr[mergedGameMap[it]!!]!! },
@@ -52,23 +56,25 @@ class MDPBVISolver<N, A>(
         )
     }
 
-    private fun calculateInitialUpperBound(mergedGame: MergedGame<N, A>, mergedRewardFunction: MergedRewardFunction<N, A>): Map<MergedNode<N, A>, Double>{
+    private fun calculateInitialUpperBound(
+        mergedGame: MergedGame<N, A>,
+        mergedRewardFunction: MergedRewardFunction<N, A>
+    ): Map<MergedNode<N, A>, Double> {
         val nodes = mergedGame.nodes
-        val SCCs = computeSCCs(mergedGame) { node -> mergedGame.getAvailableActions(node)}
+        val SCCs = computeSCCs(mergedGame) { node -> mergedGame.getAvailableActions(node) }
 
         val upperBound: MutableMap<MergedNode<N, A>, Double> = mutableMapOf()
 
-        for(node in nodes){
+        for (node in nodes) {
             var upperBoundValue = 0.0
-            if(node.edges.isNotEmpty()){
-                val reachableNodes = getReachableNodes(node)
-                for(reachableNode in reachableNodes){
+            if (node.edges.isNotEmpty()) {
+                val reachableNodes = getReachableNodesBFS(node)
+                for (reachableNode in reachableNodes) {
                     val expNumOfVisits = calculateExpectedNumberOfVisits(mergedGame, SCCs, reachableNode)
                     val maxExpReward = getExpectedMaxRewardForNode(reachableNode, mergedRewardFunction)
                     upperBoundValue += expNumOfVisits * maxExpReward
                 }
-            }
-            else{
+            } else {
                 upperBoundValue = node.reward
             }
             upperBound.put(node, upperBoundValue)
@@ -83,7 +89,11 @@ class MDPBVISolver<N, A>(
         return reachableNodes
     }
 
-    fun dfs(currentNode: MergedNode<N, A>, reachableNodes: MutableSet<MergedNode<N, A>>, visited: MutableSet<MergedNode<N, A>>) {
+    fun dfs(
+        currentNode: MergedNode<N, A>,
+        reachableNodes: MutableSet<MergedNode<N, A>>,
+        visited: MutableSet<MergedNode<N, A>>
+    ) {
         if (currentNode !in visited) {
             visited.add(currentNode)
             reachableNodes.add(currentNode)
@@ -92,7 +102,29 @@ class MDPBVISolver<N, A>(
             }
         }
     }
-    private fun calculateExpectedNumberOfVisits(mergedGame: MergedGame<N, A>, SCCs: List<Set<MergedNode<N, A>>>, node: MergedNode<N, A>): Double{
+
+    fun getReachableNodesBFS(fromNode: MergedNode<N, A>): Set<MergedNode<N, A>> {
+        val queue: Queue<MergedNode<N, A>> = LinkedList()
+        val visited: MutableSet<MergedNode<N, A>> = mutableSetOf()
+        visited.add(fromNode)
+        queue.add(fromNode)
+        while (queue.isNotEmpty()) {
+            val currentNode: MergedNode<N, A> = queue.poll()
+            for (neighborNode in currentNode.edges.flatMap { edge -> edge.res.pmf.keys }) {
+                if (!visited.contains(neighborNode)) {
+                    visited.add(neighborNode)
+                    queue.add(neighborNode)
+                }
+            }
+        }
+        return visited
+    }
+
+    private fun calculateExpectedNumberOfVisits(
+        mergedGame: MergedGame<N, A>,
+        SCCs: List<Set<MergedNode<N, A>>>,
+        node: MergedNode<N, A>
+    ): Double {
         val p = calculateP(mergedGame.nodes)
         val q = calculateQ(SCCs)
         val sizeOfComponent = SCCs.filter { it.contains(node) }.size
@@ -106,18 +138,18 @@ class MDPBVISolver<N, A>(
         }
     }
 
-    private fun calculateP(nodes: List<MergedNode<N,A>>): Double {
+    private fun calculateP(nodes: List<MergedNode<N, A>>): Double {
         return nodes.flatMap { node ->
             node.edges.flatMap { edge ->
                 edge.res.pmf.values
             }
-        }.minOrNull() ?:0.0
+        }.minOrNull() ?: 0.0
     }
 
     private fun calculateQ(SCCs: List<Set<MergedNode<N, A>>>): Double {
-         return SCCs.map{ scc ->
-             calculate_q_t(scc)
-         }.maxOrNull() ?: 0.0
+        return SCCs.map { scc ->
+            calculate_q_t(scc)
+        }.maxOrNull() ?: 0.0
     }
 
     private fun calculate_q_t(SCC: Set<MergedNode<N, A>>): Double {
@@ -126,18 +158,19 @@ class MDPBVISolver<N, A>(
                 val probStaysInSCC = edge.res.pmf
                     .filter { (targetNode, probability) -> targetNode in SCC }
                     .values.sum()
-                if(probStaysInSCC < 1) probStaysInSCC else 0.0
+                if (probStaysInSCC < 1) probStaysInSCC else 0.0
             }
         }
         return X_t.maxOrNull() ?: 0.0
     }
 
-    private fun getExpectedMaxRewardForNode(node: MergedNode<N, A>, rewardFunction: MergedRewardFunction<N, A>): Double{
-        // merged reward functionnel szamolni az edge.reward helyett
-        // state reward + exp act reward
+    private fun getExpectedMaxRewardForNode(
+        node: MergedNode<N, A>,
+        rewardFunction: MergedRewardFunction<N, A>
+    ): Double {
         val nodeReward = rewardFunction.getStateReward(node)
 
-        return node.edges.map{ edge ->
+        return node.edges.map { edge ->
             edge.res.pmf.entries.sumOf { (targetNode, probability) ->
                 val edgeReward = rewardFunction.getEdgeReward(node, edge, targetNode)
                 nodeReward + probability * edgeReward
@@ -155,7 +188,7 @@ class MDPBVISolver<N, A>(
             val known = hashSetOf(chosenEdge.origin.first)
             while (known.size != mergedNode.origNodes.size) {
                 for (origNode in mergedNode.origNodes) {
-                    if(origNode !in known) {
+                    if (origNode !in known) {
                         val action =
                             origGame.getAvailableActions(origNode).find {
                                 origGame.getResult(origNode, it).support.any { it in known }
@@ -175,7 +208,10 @@ class MDPBVISolver<N, A>(
         return solveWithRange(analysisTask, initializer).lower
     }
 
-    override fun solveWithStrategy(analysisTask: AnalysisTask<N, A>, initializer: SGSolutionInitializer<N, A>): Pair<Map<N, Double>, Map<N, A>> {
+    override fun solveWithStrategy(
+        analysisTask: AnalysisTask<N, A>,
+        initializer: SGSolutionInitializer<N, A>
+    ): Pair<Map<N, Double>, Map<N, A>> {
         TODO("Not yet implemented")
     }
 }

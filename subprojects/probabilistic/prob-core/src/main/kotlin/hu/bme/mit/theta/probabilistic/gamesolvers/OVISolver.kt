@@ -82,7 +82,6 @@ class OVISolver<N, A>(
 
             if (down) {
                 val resultMap = averageValues(values, upperBoundValues)
-                println("Tolerance adjusted " + toleranceAdjustmentCount + " times")
                 return resultMap to strategy
             } else if (up) {
                 this.tolerance = err / 2

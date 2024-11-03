@@ -485,10 +485,7 @@ class JaniCLI : CliktCommand() {
                     if(iteration % 1000 == 0) println("Iteration $iteration: [$linit, $uinit], ${reachedSet.size} nodes")
                 }
             }
-            Algorithm.OVI -> OVISolver(epsilonOVI, threshold) { adjustmentCount ->
-
-                println("Tolerance Adjustment Count: $adjustmentCount")
-            }
+            Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
         }
         val result = when (domain) {
             PRED -> lazyChecker.checkPred(model, task)

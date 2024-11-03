@@ -9,7 +9,6 @@ class OVISolver<N, A>(
     val useGS: Boolean = true,
     var values: MutableMap<N, Double> = mutableMapOf(),
     var toleranceAdjustmentCount: Int = 0,
-    val onToleranceAdjustment: (Int) -> Unit = {}
 ) : StochasticGameSolver<N, A> {
     override fun solve(analysisTask: AnalysisTask<N, A>, initializer: SGSolutionInitializer<N, A>): Map<N, Double> {
         return solveWithStrategy(analysisTask, initializer).first
@@ -62,43 +61,37 @@ class OVISolver<N, A>(
             val newValues = valueStepResult.result
             val newUpperBoundValues = upperBoundValueStepResult.result
 
-            if (isAnyNewValueLessThanValue(upperBoundValues, newUpperBoundValues)) {
+            if (valueDecrease(upperBoundValues, newUpperBoundValues)) {
                 //upperBoundValues = newUpperBoundValues
                 upperBoundValues = updateMapIfSmaller(upperBoundValues, newUpperBoundValues)
                 up = false
-            } else if (isAnyNewValueLessThanValue(newUpperBoundValues, upperBoundValues)) {
+            }
+            if (valueIncrease(upperBoundValues, newUpperBoundValues)) {
                 down = false
             }
 
             values = newValues.toMutableMap()
             strategy.putAll(valueStepResult.strategyUpdate!!)
 
-            if (isAnyNewValueLessThanValue(values, upperBoundValues)) {
+            if (valueDecrease(values, upperBoundValues)) {
                 this.tolerance = err / 2
                 this.toleranceAdjustmentCount++
-                onToleranceAdjustment(this.toleranceAdjustmentCount)
                 return this.solveWithStrategy(analysisTask, initializer)
             }
 
             if (down) {
                 val resultMap = averageValues(values, upperBoundValues)
+                println("Tolerance adjusted " + toleranceAdjustmentCount + " times")
                 return resultMap to strategy
             } else if (up) {
                 this.tolerance = err / 2
                 this.toleranceAdjustmentCount++
-                onToleranceAdjustment(this.toleranceAdjustmentCount)
                 return this.solveWithStrategy(analysisTask, initializer)
             }
         }
         this.tolerance = err / 2
         this.toleranceAdjustmentCount++
-        onToleranceAdjustment(this.toleranceAdjustmentCount)
         return this.solveWithStrategy(analysisTask, initializer)
-    }
-
-    fun adjustTolerance() {
-        toleranceAdjustmentCount++
-        onToleranceAdjustment(toleranceAdjustmentCount) // Call the provided lambda
     }
 
     fun upperBoundValues(values: Map<N, Double>, epsilon: Double): Map<N, Double> {
@@ -113,12 +106,24 @@ class OVISolver<N, A>(
         return upperValues
     }
 
-    fun isAnyNewValueLessThanValue(values: Map<N, Double>, newValues: Map<N, Double>): Boolean {
-        return values.keys.any { node ->
-            newValues[node]?.let { newValue ->
-                newValue < values[node]!!
-            } ?: false
+    // Returns true if at least one value decreased with the Bellman step
+    fun valueDecrease(values: Map<N, Double>, newValues: Map<N, Double>): Boolean {
+        for(node in values.keys){
+            if(newValues[node]!! < values[node]!!){
+                return true
+            }
         }
+        return false
+    }
+
+    // Returns true if at least one value increased with the Bellman step
+    fun valueIncrease(values: Map<N, Double>, newValues: Map<N, Double>): Boolean {
+        for(node in values.keys){
+            if(newValues[node]!! > values[node]!!){
+                return true
+            }
+        }
+        return false
     }
 
     fun updateMapIfSmaller(originalMap: Map<N, Double>, newMap: Map<N, Double>): Map<N, Double> {

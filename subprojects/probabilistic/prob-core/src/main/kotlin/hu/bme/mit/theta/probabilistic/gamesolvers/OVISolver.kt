@@ -2,6 +2,7 @@ package hu.bme.mit.theta.probabilistic.gamesolvers
 
 import hu.bme.mit.theta.probabilistic.AnalysisTask
 import hu.bme.mit.theta.probabilistic.StochasticGameSolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.initializers.ExplicitInitializer
 
 class OVISolver<N, A>(
     val epsilon: Double,
@@ -26,12 +27,9 @@ class OVISolver<N, A>(
         val unknownNodes = allNodes.filterNot(initializer::isKnown)
         val strategy = initializer.initialStrategy().toMutableMap()
 
-        // If it is the first iteration, set the values with standard VI
-        if (values.isEmpty()) {
-            val viSolver = VISolver<N, A>(tolerance, useGS)
-            val initialValues = viSolver.solve(analysisTask, initializer)
-            values = initialValues.toMutableMap()
-        }
+        val viSolver = VISolver<N, A>(tolerance, useGS)
+        val initialValues = viSolver.solve(analysisTask, initializer)
+        values = initialValues.toMutableMap()
 
         var upperBoundValues = upperBoundValues(values, epsilon)
         var viters = 0
@@ -62,7 +60,6 @@ class OVISolver<N, A>(
             val newUpperBoundValues = upperBoundValueStepResult.result
 
             if (valueDecrease(upperBoundValues, newUpperBoundValues)) {
-                //upperBoundValues = newUpperBoundValues
                 upperBoundValues = updateMapIfSmaller(upperBoundValues, newUpperBoundValues)
                 up = false
             }
@@ -74,9 +71,7 @@ class OVISolver<N, A>(
             strategy.putAll(valueStepResult.strategyUpdate!!)
 
             if (valueDecrease(values, upperBoundValues)) {
-                this.tolerance = err / 2
-                this.toleranceAdjustmentCount++
-                return this.solveWithStrategy(analysisTask, initializer)
+                return adjustToleranceAndRecurse(analysisTask, strategy, err)
             }
 
             if (down) {
@@ -84,14 +79,23 @@ class OVISolver<N, A>(
                 println("Tolerance adjusted " + toleranceAdjustmentCount + " times")
                 return resultMap to strategy
             } else if (up) {
-                this.tolerance = err / 2
-                this.toleranceAdjustmentCount++
-                return this.solveWithStrategy(analysisTask, initializer)
+                return adjustToleranceAndRecurse(analysisTask, strategy, err)
             }
         }
+        return adjustToleranceAndRecurse(analysisTask, strategy, err)
+    }
+
+    private fun adjustToleranceAndRecurse(
+        analysisTask: AnalysisTask<N, A>,
+        strategy: MutableMap<N, A>,
+        err: Double
+    ): Pair<Map<N, Double>, Map<N, A>> {
         this.tolerance = err / 2
         this.toleranceAdjustmentCount++
-        return this.solveWithStrategy(analysisTask, initializer)
+        return this.solveWithStrategy(
+            analysisTask,
+            ExplicitInitializer(values, mapOf(), 0.0, Double.POSITIVE_INFINITY, this.tolerance, strategy)
+        )
     }
 
     fun upperBoundValues(values: Map<N, Double>, epsilon: Double): Map<N, Double> {
@@ -108,8 +112,8 @@ class OVISolver<N, A>(
 
     // Returns true if at least one value decreased with the Bellman step
     fun valueDecrease(values: Map<N, Double>, newValues: Map<N, Double>): Boolean {
-        for(node in values.keys){
-            if(newValues[node]!! < values[node]!!){
+        for (node in values.keys) {
+            if (newValues[node]!! < values[node]!!) {
                 return true
             }
         }
@@ -118,8 +122,8 @@ class OVISolver<N, A>(
 
     // Returns true if at least one value increased with the Bellman step
     fun valueIncrease(values: Map<N, Double>, newValues: Map<N, Double>): Boolean {
-        for(node in values.keys){
-            if(newValues[node]!! > values[node]!!){
+        for (node in values.keys) {
+            if (newValues[node]!! > values[node]!!) {
                 return true
             }
         }

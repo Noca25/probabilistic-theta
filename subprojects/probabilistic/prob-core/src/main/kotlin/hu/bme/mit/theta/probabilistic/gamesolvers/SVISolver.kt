@@ -18,8 +18,8 @@ class SVISolver<N, A>(
         val mergedGameNodes = mergedGame.nodes
         val mergedInit = mergedGame.initNode
 
-        val knownNodes = mergedGameNodes.filter { it.origNodes.all { node -> initializer.isKnown(node) } }.toMutableList()
-        val unknownNodes = mergedGameNodes.filterNot { it.origNodes.all { node -> initializer.isKnown(node) } }.toMutableList()
+        val knownNodes = mergedGameNodes.filter { it.edges.isEmpty() }.toMutableList()
+        val unknownNodes = mergedGameNodes.filterNot { it.edges.isEmpty() }.toMutableList()
 
         // Initialize vectors, bounds and decision value
         var values_x: MutableMap<MergedNode<N, A>, Double> = mergedGameNodes.associateWithTo(mutableMapOf()) { 0.0 }
@@ -41,10 +41,11 @@ class SVISolver<N, A>(
             values_y = knownNodes.associateWithTo(mutableMapOf()) { 0.0 }
             decisionValue = sviIterationData.decisionValue
 
+            val nodeValues = mergedGame.nodes.associateWithTo(mutableMapOf()) { mergedRewardFunction.getStateReward(it) + sviIterationData.values_x[it]!! }
+
             for(node in unknownNodes){
                 val optimalAction = findAction(mergedGame, mergedRewardFunction, sviIterationData, node, goal)
                 decisionValue = max(decisionValue, calculateDecisionValue(sviIterationData, node, optimalAction))
-                val nodeValues = mergedGame.nodes.associateWithTo(mutableMapOf()) { mergedRewardFunction.getStateReward(it) + sviIterationData.values_x[it]!! }
                 values_x.put(node, actionValues(mergedGame, nodeValues, node, mergedRewardFunction)[optimalAction]!!)
                 values_y.put(node, actionValues(mergedGame, sviIterationData.values_y, node)[optimalAction]!!)
             }
@@ -75,7 +76,7 @@ class SVISolver<N, A>(
 
         val sum = if(lowerBound == Double.NEGATIVE_INFINITY && upperBound == Double.POSITIVE_INFINITY) { 0.0 } else{ lowerBound + upperBound }
 
-        return nodes.associateWith { values_x[mergedGameMap[it]!!]!! + values_y[mergedGameMap[it]!!]!! * (sum / 2) }
+        return nodes.associateWith { rewardFunction.getStateReward(it) + values_x[mergedGameMap[it]!!]!! + values_y[mergedGameMap[it]!!]!! * (sum / 2) }
     }
 
     override fun solveWithStrategy(
@@ -127,6 +128,4 @@ class SVISolver<N, A>(
         }
         return Pair(deltaY, deltaX)
     }
-
-
 }

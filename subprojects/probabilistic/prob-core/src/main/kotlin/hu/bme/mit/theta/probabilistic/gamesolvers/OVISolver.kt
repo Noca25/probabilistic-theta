@@ -60,7 +60,7 @@ class OVISolver<N, A>(
             val newUpperBoundValues = upperBoundValueStepResult.result
 
             if (valueDecrease(upperBoundValues, newUpperBoundValues)) {
-                upperBoundValues = updateMapIfSmaller(upperBoundValues, newUpperBoundValues)
+                upperBoundValues = updateDecreasedValues(upperBoundValues, newUpperBoundValues)
                 up = false
             }
             if (valueIncrease(upperBoundValues, newUpperBoundValues)) {
@@ -130,9 +130,8 @@ class OVISolver<N, A>(
         return false
     }
 
-    fun updateMapIfSmaller(originalMap: Map<N, Double>, newMap: Map<N, Double>): Map<N, Double> {
+    fun updateDecreasedValues(originalMap: Map<N, Double>, newMap: Map<N, Double>): Map<N, Double> {
         val updatedMap = originalMap.toMutableMap()
-
         for ((key, newValue) in newMap) {
             updatedMap[key]?.let { originalValue ->
                 if (newValue < originalValue) {
@@ -140,18 +139,17 @@ class OVISolver<N, A>(
                 }
             }
         }
-
         return updatedMap
     }
 
     fun averageValues(
-        map1: Map<N, Double>,
-        map2: Map<N, Double>
+        lowerBound: Map<N, Double>,
+        upperBound: Map<N, Double>
     ): Map<N, Double> {
-        return map1.keys.associateWith { node ->
-            val value1 = map1[node] ?: 0.0
-            val value2 = map2[node] ?: 0.0
-            (value1 + value2) / 2
+        return lowerBound.keys.associateWith { node ->
+            val lowerValue = lowerBound[node] ?: 0.0
+            val upperValue = upperBound[node] ?: 0.0
+            (lowerValue + upperValue) / 2
         }
     }
 }

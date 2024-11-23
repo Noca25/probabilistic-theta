@@ -195,6 +195,7 @@ class JaniCLI : CliktCommand() {
                         }
                     }
                     Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
+                    Algorithm.SVI -> SVISolver(threshold)
                 }
                 val result = directChecker.check(model, task, quantSolver)
 
@@ -243,6 +244,7 @@ class JaniCLI : CliktCommand() {
                         Algorithm.VI -> VISolver(threshold)
                         Algorithm.BRTDP -> TODO()
                         Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
+                        Algorithm.SVI -> SVISolver(threshold)
                     },
                     eliminateSpurious,
                     traceChecker,
@@ -270,6 +272,7 @@ class JaniCLI : CliktCommand() {
                     Algorithm.VI -> VISolver(threshold)
                     Algorithm.BRTDP -> TODO()
                     Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
+                    Algorithm.SVI -> SVISolver(threshold)
                 },
                 eliminateSpurious,
                 traceChecker,
@@ -356,6 +359,7 @@ class JaniCLI : CliktCommand() {
                         Algorithm.VI -> VISolver(threshold)
                         Algorithm.BRTDP -> TODO()
                         Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
+                        Algorithm.SVI -> SVISolver(threshold)
                     },
                     ReachableMostUncertain(),
                     eliminateSpurious,
@@ -380,6 +384,7 @@ class JaniCLI : CliktCommand() {
                     Algorithm.VI -> VISolver(threshold)
                     Algorithm.BRTDP -> TODO()
                     Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
+                    Algorithm.SVI -> SVISolver(threshold)
                 },
                 ReachableMostUncertain(),
                 eliminateSpurious,
@@ -486,6 +491,7 @@ class JaniCLI : CliktCommand() {
                 }
             }
             Algorithm.OVI -> OVISolver(epsilonOVI, threshold)
+            Algorithm.SVI -> SVISolver(threshold)
         }
         val result = when (domain) {
             PRED -> lazyChecker.checkPred(model, task)

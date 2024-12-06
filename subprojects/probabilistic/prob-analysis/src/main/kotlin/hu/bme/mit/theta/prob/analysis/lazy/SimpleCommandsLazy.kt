@@ -27,6 +27,7 @@ import hu.bme.mit.theta.prob.analysis.ProbabilisticCommand
 import hu.bme.mit.theta.prob.analysis.toAction
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.Goal
+import hu.bme.mit.theta.probabilistic.gamesolvers.VISolver
 import hu.bme.mit.theta.solver.ItpSolver
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.utils.WithPushPop
@@ -54,9 +55,10 @@ class SimpleCommandsLazy(
         val explDomain = ExplDomain(concreteTransFunc, fullPrec)
         val checker = ProbLazyChecker(
             {commands}, {errorCommands},
-            ExplState.of(initValuation), ExplState.top(), explDomain, goal
+            ExplState.of(initValuation), ExplState.top(), explDomain, goal,
+            VISolver(1e-7)
         )
-        return checker.fullyExpanded(false, 1e-7)
+        return checker.fullyExpanded(1e-7)
     }
 
     private class ExplDomain(

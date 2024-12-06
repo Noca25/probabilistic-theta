@@ -37,6 +37,8 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
     // Checker Configuration
 
+    private val quantSolver: StochasticGameSolver<ProbLazyChecker<SC,SA, A>.Node, ProbLazyChecker<SC,SA, A>.PARGAction>,
+
     // Approximation settings
     private val useMayStandard: Boolean = true,
     private val useMustStandard: Boolean = false,
@@ -1093,7 +1095,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
 
 
     fun fullyExpanded(
-        useBVI: Boolean = false,
         threshold: Double,
         extractKeys: (SA) -> List<*> = { _ -> listOf(null) },
         timeout: Int = 0,
@@ -1116,9 +1117,9 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         timer.start()
         val errorProb =
             if (useGameRefinement) computeErrorProbWithRefinement(
-                initNode, reachedSet, scToNode, useBVI, threshold, threshold
+                initNode, reachedSet, scToNode, threshold, threshold
             )
-            else computeErrorProb(initNode, nodes, useBVI, threshold)
+            else computeErrorProb(initNode, nodes)
         timer.stop()
         val probTime = timer.elapsed(TimeUnit.MILLISECONDS)
         println("Probability computation time (ms): $probTime")
@@ -1329,8 +1330,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
     private fun computeErrorProb(
         initNode: Node,
         reachedSet: Collection<Node>,
-        useBVI: Boolean,
-        threshold: Double
     ): Double {
 
         val parg = PARG(initNode, reachedSet)
@@ -1340,9 +1339,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             if (useQualitativePreprocessing)
                 MDPAlmostSureTargetInitializer(parg, goal) { it.isErrorNode && !it.isCovered }
             else TargetSetLowerInitializer { it.isErrorNode && !it.isCovered }
-        val quantSolver: StochasticGameSolver<Node, PARGAction> =
-            if (useBVI) MDPBVISolver(threshold)
-            else VISolver(threshold, useGS = false)
 
         val analysisTask = AnalysisTask(parg, { goal }, rewardFunction)
         val nodes = parg.getAllNodes()
@@ -1395,7 +1391,6 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
         initNode: Node,
         reachedSet: TrieReachedSet<Node, Any>,
         scToNode: MutableMap<SC, ArrayList<Node>>,
-        useBVI: Boolean,
         innerThreshold: Double,
         outerThreshold: Double
     ): Double {
@@ -1439,12 +1434,9 @@ class ProbLazyChecker<SC : ExprState, SA : ExprState, A : StmtAction>(
             lateinit var trappedValues: Map<Node, Double>
             lateinit var fullValues: Map<Node, Double>
 
-            if (useBVI) {
-                val fullSolver = MDPBVISolver<Node, PARGAction>(innerThreshold)
-                val trappedSolver = MDPBVISolver<Node, PARGAction>(innerThreshold)
-
-                val (Lfull, Ufull) = fullSolver.solveWithRange(fullAnalysisTask, fullInitializer)
-                val (Ltrapped, Utrapped) = trappedSolver.solveWithRange(trappedAnalysisTask, trappedInitializer)
+            if (quantSolver is MDPBVISolver) {
+                val (Lfull, Ufull) = quantSolver.solveWithRange(fullAnalysisTask, fullInitializer)
+                val (Ltrapped, Utrapped) = quantSolver.solveWithRange(trappedAnalysisTask, trappedInitializer)
 
                 // TODO: strategies
                 val lowerApprox =

@@ -13,10 +13,8 @@ import hu.bme.mit.theta.prob.analysis.jani.*
 import hu.bme.mit.theta.prob.analysis.lazy.SMDPLazyChecker.Algorithm.*
 import hu.bme.mit.theta.probabilistic.FiniteDistribution
 import hu.bme.mit.theta.probabilistic.StochasticGame
-import hu.bme.mit.theta.probabilistic.gamesolvers.diffBasedSelection
-import hu.bme.mit.theta.probabilistic.gamesolvers.randomSelection
-import hu.bme.mit.theta.probabilistic.gamesolvers.roundRobinSelection
-import hu.bme.mit.theta.probabilistic.gamesolvers.weightedRandomSelection
+import hu.bme.mit.theta.probabilistic.StochasticGameSolver
+import hu.bme.mit.theta.probabilistic.gamesolvers.*
 import hu.bme.mit.theta.solver.ItpSolver
 import hu.bme.mit.theta.solver.Solver
 import hu.bme.mit.theta.solver.UCSolver
@@ -57,7 +55,7 @@ class SMDPLazyChecker(
 
     fun checkExpl(
         smdp: SMDP,
-        smdpReachabilityTask: SMDPReachabilityTask
+        smdpReachabilityTask: SMDPReachabilityTask,
     ): Double {
 
         fun targetCommands(locs: List<SMDP.Location>) = listOf(
@@ -94,11 +92,19 @@ class SMDPLazyChecker(
 
         val explDomain = SMDPExplDomain(domainTransFunc, fullPrec, itpSolver)
 
+
         val checker = ProbLazyChecker(
             ::commandsWithPrecondition, { targetCommands(it.locs) },
             fullInit.first(), topInit.first(),
             explDomain,
             smdpReachabilityTask.goal,
+            when(algorithm) {
+                BRTDP -> VISolver(threshold, false) // this won't be used anyway
+                VI -> VISolver(threshold, false)
+                BVI -> MDPBVISolver(threshold)
+                OVI -> OVISolver(1e-6, threshold)
+                SVI -> SVISolver(threshold)
+            },
             useMayStandard,
             useMustStandard,
             useMayTarget,
@@ -125,10 +131,7 @@ class SMDPLazyChecker(
 
         val subResult = when (algorithm) {
             BRTDP -> checker.brtdp(successorSelection, threshold)
-            VI -> checker.fullyExpanded(false, threshold, extract)
-            BVI -> checker.fullyExpanded(true, threshold, extract)
-            OVI -> checker.fullyExpanded(false, threshold, extract)
-            SVI -> checker.fullyExpanded(false, threshold, extract)
+            else -> checker.fullyExpanded(threshold)//, extract)
         }
 
         return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
@@ -184,6 +187,13 @@ class SMDPLazyChecker(
             fullInit.first(), topInit.first(),
             predDomain,
             smdpReachabilityTask.goal,
+            when(algorithm) {
+                BRTDP -> VISolver(threshold, false) // this won't be used anyway
+                VI -> VISolver(threshold, false)
+                BVI -> MDPBVISolver(threshold)
+                OVI -> OVISolver(1e-6, threshold)
+                SVI -> SVISolver(threshold)
+            },
             useMayStandard,
             useMustStandard,
             useMayTarget,
@@ -205,10 +215,7 @@ class SMDPLazyChecker(
 
         val subResult = when (algorithm) {
             BRTDP -> checker.brtdp(successorSelection, threshold)
-            VI -> checker.fullyExpanded(false, threshold)
-            BVI -> checker.fullyExpanded(true, threshold)
-            OVI -> checker.fullyExpanded(false, threshold)
-            SVI -> checker.fullyExpanded(false, threshold)
+            else -> checker.fullyExpanded(threshold)
         }
 
         return if (smdpReachabilityTask.negateResult) 1.0 - subResult else subResult
